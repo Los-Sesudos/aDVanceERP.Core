@@ -1,0 +1,564 @@
+﻿using aDVanceERP.Core.Infraestructura.Globales;
+using aDVanceERP.Core.Modelos.Comun.Interfaces;
+using aDVanceERP.Core.Modelos.Modulos.Inventario;
+using aDVanceERP.Core.Repositorios.BD;
+using aDVanceERP.Core.Repositorios.Modulos.Monedas;
+
+using MySql.Data.MySqlClient;
+
+using System.Data;
+using System.Globalization;
+
+namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
+    public class RepoProducto : RepoEntidadBaseDatos<Producto, FiltroBusquedaProducto> {
+        public RepoProducto() : base("adv__producto", "id_producto") { }
+
+        protected override string GenerarComandoAdicionar(Producto objeto, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
+            var consulta = $"""
+                    INSERT INTO adv__producto (
+                    ruta_imagen,
+                    categoria,
+                    nombre,
+                    codigo,
+                    id_proveedor,
+                    descripcion,
+                    id_unidad_medida,
+                    id_clasificacion_producto,
+                    es_vendible,
+                    costo_adquisicion_unitario,
+                    costo_produccion_unitario,
+                    impuesto_venta_porcentaje,
+                    margen_ganancia_deseado,
+                    precio_venta_base,
+                    activo
+                )
+                VALUES (
+                    @RutaImagen,
+                    @Categoria,
+                    @Nombre,
+                    @Codigo,
+                    @IdProveedor,
+                    @Descripcion,
+                    @IdUnidadMedida,
+                    @IdClasificacionProducto,
+                    @EsVendible,
+                    @CostoAdquisicionUnitario,
+                    @CostoProduccionUnitario,
+                    @ImpuestoVentaPorcentaje,
+                    @MargenGananciaDeseado,
+                    @PrecioVentaBase,
+                    @Activo
+                );
+                """;
+
+            parametros = new Dictionary<string, object> {
+                { "@RutaImagen", objeto.RutaImagen  },
+                { "@Categoria", objeto.Categoria.ToString() },
+                { "@Nombre", objeto.Nombre },
+                { "@Codigo", objeto.Codigo },
+                { "@IdProveedor", objeto.IdProveedor },
+                { "@Descripcion", objeto.Descripcion },
+                { "@IdUnidadMedida", objeto.IdUnidadMedida },
+                { "@IdClasificacionProducto", objeto.IdClasificacionProducto },
+                { "@EsVendible", objeto.EsVendible },
+                { "@CostoAdquisicionUnitario", objeto.CostoAdquisicionUnitario },
+                { "@CostoProduccionUnitario", objeto.CostoProduccionUnitario },
+                { "@ImpuestoVentaPorcentaje", objeto.ImpuestoVentaPorcentaje },
+                { "@MargenGananciaDeseado", objeto.MargenGananciaDeseado },
+                { "@PrecioVentaBase", objeto.PrecioVentaBase },
+                { "@Activo", objeto.Activo }
+            };
+
+            return consulta;
+        }
+
+        protected override string GenerarComandoEditar(Producto objeto, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
+            var consulta = $"""
+                    UPDATE adv__producto
+                SET
+                    ruta_imagen = @RutaImagen,
+                    categoria = @Categoria,
+                    nombre = @Nombre,
+                    codigo = @Codigo,
+                    id_proveedor = @IdProveedor,
+                    descripcion = @Descripcion,
+                    id_unidad_medida = @IdUnidadMedida,
+                    id_clasificacion_producto = @IdClasificacionProducto,
+                    es_vendible = @EsVendible,
+                    costo_adquisicion_unitario = @CostoAdquisicionUnitario,
+                    costo_produccion_unitario = @CostoProduccionUnitario,
+                    impuesto_venta_porcentaje = @ImpuestoVentaPorcentaje,
+                    margen_ganancia_deseado = @MargenGananciaDeseado,
+                    precio_venta_base = @PrecioVentaBase,
+                    activo = @Activo
+                WHERE id_producto = @Id;
+                """;
+
+            parametros = new Dictionary<string, object> {
+                { "@Id", objeto.Id  },
+                { "@RutaImagen", objeto.RutaImagen  },
+                { "@Categoria", objeto.Categoria.ToString() },
+                { "@Nombre", objeto.Nombre },
+                { "@Codigo", objeto.Codigo },
+                { "@IdProveedor", objeto.IdProveedor },
+                { "@Descripcion", objeto.Descripcion },
+                { "@IdUnidadMedida", objeto.IdUnidadMedida },
+                { "@IdClasificacionProducto", objeto.IdClasificacionProducto },
+                { "@EsVendible", objeto.EsVendible },
+                { "@CostoAdquisicionUnitario", objeto.CostoAdquisicionUnitario },
+                { "@CostoProduccionUnitario", objeto.CostoProduccionUnitario },
+                { "@ImpuestoVentaPorcentaje", objeto.ImpuestoVentaPorcentaje },
+                { "@MargenGananciaDeseado", objeto.MargenGananciaDeseado },
+                { "@PrecioVentaBase", objeto.PrecioVentaBase },
+                { "@Activo", objeto.Activo }
+            };
+
+            return consulta;
+        }
+
+        protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> parametros) {
+            var consulta = $"""
+                DELETE FROM adv__inventario
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__producto 
+            WHERE id_producto = @id;
+            """;
+
+            parametros = new Dictionary<string, object> {
+                { "@id", id }
+            };
+
+            return consulta;
+        }
+
+        protected override string GenerarComandoObtener(FiltroBusquedaProducto filtroBusqueda, out Dictionary<string, object> parametros, params string[]? criteriosBusqueda) {
+            var criterio = criteriosBusqueda != null && criteriosBusqueda.Length > 2
+                ? criteriosBusqueda[2]
+                : criteriosBusqueda.Length > 0
+                    ? criteriosBusqueda[0]
+                    : string.Empty;
+
+            if (criteriosBusqueda == null || criteriosBusqueda.Length == 0 || string.IsNullOrEmpty(criteriosBusqueda[0]))
+                criterio = string.Empty;
+
+            // Procesamiento de parámetros
+            var todosLosAlmacenes = criteriosBusqueda?.Length == 0 || criteriosBusqueda?.Length > 1 && criteriosBusqueda[0].Contains("Todos");
+            var todasLasCategorias = criteriosBusqueda?.Length == 0 || criteriosBusqueda?.Length > 2 && criteriosBusqueda[1].Equals("0");
+            var aplicarFiltroAlmacen = criteriosBusqueda?.Length > 1 && !todosLosAlmacenes;
+            var aplicarFiltroCategoria = criteriosBusqueda?.Length > 2 && !todasLasCategorias;
+            var aplicarFiltroTextual = !string.IsNullOrEmpty(criterio); // ← CAMBIO: nueva variable
+
+            // Partes adicionales de la consulta
+            string consultaAdicionalSelect;
+            string consultaAdicionalJoin;
+
+            if (todosLosAlmacenes) {
+                consultaAdicionalSelect = ", COALESCE(SUM(i.cantidad), 0) AS cantidad, GROUP_CONCAT(DISTINCT a.nombre SEPARATOR ', ') AS nombre_almacen";
+                consultaAdicionalJoin = "LEFT JOIN adv__inventario i ON p.id_producto = i.id_producto LEFT JOIN adv__almacen a ON i.id_almacen = a.id_almacen ";
+            } else if (aplicarFiltroAlmacen) {
+                consultaAdicionalSelect = ", i.cantidad, a.nombre AS nombre_almacen";
+                consultaAdicionalJoin = "JOIN adv__inventario i ON p.id_producto = i.id_producto JOIN adv__almacen a ON i.id_almacen = a.id_almacen ";
+            } else {
+                consultaAdicionalSelect = "";
+                consultaAdicionalJoin = "";
+            }
+
+            // Construcción de condiciones WHERE
+            var condiciones = new List<string> { "p.activo = @activo" };
+
+            if (aplicarFiltroAlmacen && !todosLosAlmacenes)
+                condiciones.Add("a.nombre = @nombre_almacen");
+
+            if (aplicarFiltroCategoria)
+                condiciones.Add("p.categoria = @categoria");
+
+            var whereClause = condiciones.Count > 0 ? $"WHERE {string.Join(" AND ", condiciones)}" : "";
+            var condicionTextual = filtroBusqueda switch {
+                FiltroBusquedaProducto.Id => "AND p.id_producto = @id",
+                FiltroBusquedaProducto.Codigo => "AND LOWER(p.codigo) LIKE LOWER(@codigo)",
+                FiltroBusquedaProducto.Nombre => "AND LOWER(p.nombre) LIKE LOWER(@nombre)",
+                FiltroBusquedaProducto.Descripcion => "AND LOWER(p.descripcion) LIKE LOWER(@descripcion)",
+                _ => string.Empty
+            };
+
+            string consulta;
+
+            if (todosLosAlmacenes) {
+                consulta = $"""
+                    SELECT p.*{consultaAdicionalSelect}
+                    FROM adv__producto p
+                    {consultaAdicionalJoin}
+                    {whereClause}
+                    {(aplicarFiltroTextual ? condicionTextual : string.Empty)}
+                    GROUP BY p.id_producto, p.ruta_imagen, p.categoria, p.nombre, p.codigo, 
+                             p.id_proveedor, p.descripcion, p.id_unidad_medida, 
+                             p.id_clasificacion_producto, p.es_vendible, p.costo_adquisicion_unitario,
+                             p.costo_produccion_unitario, p.impuesto_venta_porcentaje, 
+                             p.margen_ganancia_deseado, p.precio_venta_base, p.activo;
+                    """;
+            } else {
+                var consultaComun = $"""
+                    SELECT p.*{consultaAdicionalSelect}
+                    FROM adv__producto p
+                    {consultaAdicionalJoin}
+                    """;
+
+                consulta = $"""
+                    {consultaComun}
+                    {(condiciones.Count > 0 ? whereClause + " " : "WHERE 1=1 ")}
+                    {(aplicarFiltroTextual ? condicionTextual : string.Empty)};
+                    """;
+            }
+
+            parametros = filtroBusqueda switch {
+                FiltroBusquedaProducto.Id => new Dictionary<string, object> {
+                    { "@id", Convert.ToInt64(string.IsNullOrEmpty(criterio) ? "0" : criterio) },
+                    { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
+                },
+                FiltroBusquedaProducto.Codigo => new Dictionary<string, object> {
+                    { "@codigo", $"%{criterio}%" },
+                    { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
+                },
+                FiltroBusquedaProducto.Nombre => new Dictionary<string, object> {
+                    { "@nombre", $"%{criterio}%" },
+                    { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
+                },
+                FiltroBusquedaProducto.Descripcion => new Dictionary<string, object> {
+                    { "@descripcion", $"%{criterio}%" },
+                    { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
+                },
+                _ => new Dictionary<string, object> {
+                    { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
+                }
+            };
+
+            if (aplicarFiltroAlmacen && !todosLosAlmacenes)
+                parametros.Add("@nombre_almacen", criteriosBusqueda[0]);
+
+            if (aplicarFiltroCategoria)
+                parametros.Add("@categoria", Convert.ToInt32(criteriosBusqueda[1]));
+
+            return consulta;
+        }
+
+        /// <summary>
+        /// Maps the current record from the specified data reader to a new instance of the Producto entity.
+        /// </summary>
+        /// <remarks>The data reader must include all columns required to construct a Producto. Field values are
+        /// converted to the appropriate types; missing or invalid values may result in default values being used for some
+        /// properties.</remarks>
+        /// <param name="lectorDatos">A MySqlDataReader positioned at the record to map. Must not be null and must contain all required fields for
+        /// Producto.</param>
+        /// <returns>A Producto instance populated with values from the current record of the data reader.</returns>
+        protected override (Producto, List<IEntidadBaseDatos>) MapearEntidad(MySqlDataReader lectorDatos) {
+            return (new Producto(
+                id: Convert.ToInt64(lectorDatos["id_producto"]),
+                rutaImagen: Convert.ToString(lectorDatos["ruta_imagen"]) ?? string.Empty,
+                categoria: Enum.TryParse<CategoriaProductoEnum>(Convert.ToString(lectorDatos["categoria"]) ?? string.Empty, out var categoria) ? categoria : CategoriaProductoEnum.Mercancia,
+                nombre: Convert.ToString(lectorDatos["nombre"]) ?? string.Empty,
+                codigo: Convert.ToString(lectorDatos["codigo"]) ?? string.Empty,
+                idProveedor: Convert.ToInt64(lectorDatos["id_proveedor"]),
+                descripcion: Convert.ToString(lectorDatos["descripcion"]) ?? string.Empty,
+                idUnidadMedida: Convert.ToInt64(lectorDatos["id_unidad_medida"]),
+                idClasificacionProducto: Convert.ToInt64(lectorDatos["id_clasificacion_producto"]),
+                esVendible: Convert.ToBoolean(lectorDatos["es_vendible"]),
+                costoAdquisicionUnitario: Convert.ToDecimal(lectorDatos["costo_adquisicion_unitario"], CultureInfo.InvariantCulture),
+                costoProduccionUnitario: Convert.ToDecimal(lectorDatos["costo_produccion_unitario"], CultureInfo.InvariantCulture),
+                impuestoVentaPorcentaje: Convert.ToDecimal(lectorDatos["impuesto_venta_porcentaje"], CultureInfo.InvariantCulture),
+                margenGananciaDeseado: Convert.ToDecimal(lectorDatos["margen_ganancia_deseado"], CultureInfo.InvariantCulture),
+                precioVentaBase: Convert.ToDecimal(lectorDatos["precio_venta_base"], CultureInfo.InvariantCulture),
+                activo: Convert.ToBoolean(lectorDatos["activo"])
+            ), new List<IEntidadBaseDatos>());
+        }
+
+        #region SINGLETON
+
+        public static RepoProducto Instancia { get; } = new RepoProducto();
+
+        #endregion
+
+        #region UTILES
+
+        public string ObtenerProductosAlmacenJson(long idAlmacen) {
+            var consulta = """
+                SELECT
+                    p.id_producto,
+                    p.codigo,
+                    p.nombre,
+                    p.descripcion,
+                    p.categoria,
+                    p.precio_venta_base,
+                    p.impuesto_venta_porcentaje,
+                    p.id_clasificacion_producto,
+                    inv.cantidad        AS stock_disponible,
+                    inv.costo_promedio,
+                    a.id_almacen,
+                    a.nombre            AS nombre_almacen,
+                    IFNULL(um.nombre, '')       AS unidad_medida,
+                    IFNULL(um.abreviatura, '')  AS abreviatura_medida
+                FROM adv__producto p
+                JOIN adv__inventario inv
+                    ON p.id_producto = inv.id_producto
+                JOIN adv__almacen a
+                    ON inv.id_almacen = a.id_almacen
+                LEFT JOIN adv__unidad_medida um
+                    ON p.id_unidad_medida = um.id_unidad_medida
+                WHERE inv.id_almacen  = @IdAlmacen
+                  AND inv.cantidad    > 0
+                  AND p.es_vendible   = 1
+                  AND p.activo        = 1
+                ORDER BY p.nombre ASC;
+                """;
+
+            var parametros = new Dictionary<string, object> {
+                { "@IdAlmacen", idAlmacen }
+            };
+
+            try {
+                var resultado = ContextoBaseDatos.EjecutarConsulta(consulta, parametros, MapearEntidadJson);
+
+                // El mapper devuelve la lista completa como un solo objeto en entidadBase
+                var productos = resultado.FirstOrDefault().entidadBase
+                                as List<Dictionary<string, object>>
+                                ?? new List<Dictionary<string, object>>();
+
+                // Extraer nombre del almacén del primer producto (todos comparten el mismo almacén)
+                string nombreAlmacen = productos.FirstOrDefault()?
+                                           .GetValueOrDefault("nombreAlmacen")?.ToString()
+                                       ?? string.Empty;
+
+                // Cargar presentaciones para todos los productos
+                var productosConPresentaciones = AgregarPresentacionesAProductos(productos);
+
+                // Limpiar campos internos que no van al JSON final del móvil
+                var productosFinal = productosConPresentaciones.Select(p => {
+                    var limpio = new Dictionary<string, object>(p);
+                    limpio.Remove("nombreAlmacen");
+                    limpio.Remove("idAlmacen");
+                    return limpio;
+                }).ToList();
+
+                // Cargar monedas activas con tasas del día
+                var repoMoneda = RepoMoneda.Instancia;
+                var repoTasaCambio = RepoTasaCambio.Instancia;
+                var monedaBase = repoMoneda.ObtenerMonedaBase();
+                var monedasActivas = repoMoneda.ObtenerActivas();
+
+                var monedasParaJson = monedasActivas.Select(m => {
+                    // Si es moneda base, tasa = 1. Si no, obtener tasa vigente desde moneda base
+                    var tasa = m.EsBase
+                        ? 1m
+                        : repoTasaCambio.ObtenerTasaVigente(monedaBase.Id, m.Id);
+
+                    return new {
+                        id = m.Id,
+                        codigo = m.Codigo,
+                        nombre = m.Nombre,
+                        simbolo = m.Simbolo,
+                        esBase = m.EsBase,
+                        tasaHoy = tasa,
+                        aplicaEfectivo = true,  // ⚠️ VER NOTA ABAJO
+                        precisionDecimal = m.PrecisionDecimal
+                    };
+                }).ToList();
+
+                // Construir el sobre completo: { meta, productos, monedas }
+                var catalogo = new {
+                    meta = new {
+                        version = "1.0",
+                        generadoEn = DateTime.Now.ToString("o"),
+                        aplicacion = "aDVance ERP",
+                        idAlmacen = idAlmacen,
+                        nombreAlmacen = nombreAlmacen
+                    },
+                    productos = productosFinal,
+                    monedas = monedasParaJson
+                };
+
+                return System.Text.Json.JsonSerializer.Serialize(catalogo,
+                    new System.Text.Json.JsonSerializerOptions {
+                        WriteIndented = true,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                    });
+            } catch (Exception ex) {
+                throw new Exception($"Error al exportar productos del almacén {idAlmacen}: {ex.Message}", ex);
+            }
+        }
+
+        private (object entidadBase, List<IEntidadBaseDatos>) MapearEntidadJson(MySqlDataReader lector) {
+            var listaProductos = new List<Dictionary<string, object>>();
+
+            do {
+                var producto = new Dictionary<string, object> {
+                    // ── Identidad ───────────────────────────────────
+                    ["id"] = lector.GetInt64("id_producto"),
+                    ["codigo"] = lector.GetString("codigo"),
+                    ["nombre"] = lector.GetString("nombre"),
+                    ["descripcion"] = lector.GetString("descripcion"),
+                    ["categoria"] = lector.GetString("categoria"),   // enum: Mercancia | ProductoTerminado | MateriaPrima
+
+                    // ── Precios ─────────────────────────────────────
+                    // La app calcula: PrecioConImpuesto = precioVentaBase * (1 + impuestoVentaPorcentaje / 100)
+                    ["precioVentaBase"] = lector.GetDecimal("precio_venta_base"),
+                    ["impuestoVentaPorcentaje"] = lector.GetDecimal("impuesto_venta_porcentaje"),
+
+                    // ── Stock ────────────────────────────────────────
+                    // decimal(10,2) en BD → GetDecimal, no GetInt32
+                    ["stockDisponible"] = lector.GetDecimal("stock_disponible"),
+
+                    // ── Unidad de medida ────────────────────────────
+                    // Prefiere abreviatura; si está vacía usa el nombre completo
+                    ["unidadMedida"] = !lector.IsDBNull(lector.GetOrdinal("abreviatura_medida"))
+                                            && lector.GetString("abreviatura_medida") != ""
+                                                ? lector.GetString("abreviatura_medida")
+                                                : lector.IsDBNull(lector.GetOrdinal("unidad_medida"))
+                                                    ? ""
+                                                    : lector.GetString("unidad_medida"),
+
+                    // ── Almacén (para construir el meta fuera del loop) ──
+                    ["nombreAlmacen"] = lector.GetString("nombre_almacen"),
+                    ["idAlmacen"] = lector.GetInt64("id_almacen"),
+
+                    // ── Trazabilidad (útil al importar ventas de vuelta) ─
+                    ["idClasificacion"] = lector.GetInt64("id_clasificacion_producto"),
+                    ["costoPromedio"] = lector.GetDecimal("costo_promedio")
+                };
+
+                listaProductos.Add(producto);
+            }
+            while (lector.Read());
+
+            return (listaProductos, new List<IEntidadBaseDatos>());
+        }
+
+        /// <summary>
+        /// Agrega las presentaciones de venta a cada producto del catálogo.
+        /// Las presentaciones se cargan desde la tabla adv__precio_presentacion
+        /// y se incluyen en el campo "presentaciones" con la estructura:
+        /// [{id, cantidad, precioVenta, activo, unidadMedida}]
+        /// </summary>
+        private List<Dictionary<string, object>> AgregarPresentacionesAProductos(
+            List<Dictionary<string, object>> productos) {
+            
+            if (productos == null || productos.Count == 0)
+                return productos;
+
+            var repoPresentacion = RepoPresentacionProducto.Instancia;
+
+            foreach (var producto in productos) {
+                var idProducto = Convert.ToInt64(producto["id"]);
+                
+                // Obtener todas las presentaciones activas del producto
+                var presentaciones = repoPresentacion
+                    .Buscar(FiltroBusquedaPresentacionProducto.PresentacionesActivas, idProducto.ToString())
+                    .resultadosBusqueda
+                    .Select(r => r.entidadBase as PresentacionProducto)
+                    .Where(p => p != null)
+                    .ToList();
+
+                // Construir el array de presentaciones para el JSON
+                var presentacionesJson = new List<Dictionary<string, object>>();
+                
+                foreach (var presentacion in presentaciones) {
+                    // Obtener la unidad de medida de la presentación
+                    var unidadMedida = string.Empty;
+                    if (presentacion.IdUnidadMedida > 0) {
+                        var repoUnidadMedida = RepoUnidadMedida.Instancia;
+                        var unidad = repoUnidadMedida.ObtenerPorId(presentacion.IdUnidadMedida);
+                        if (unidad != null) {
+                            unidadMedida = !string.IsNullOrEmpty(unidad.Abreviatura) 
+                                ? unidad.Abreviatura 
+                                : unidad.Nombre;
+                        }
+                    }
+
+                    presentacionesJson.Add(new Dictionary<string, object> {
+                        ["id"] = presentacion.Id,
+                        ["cantidad"] = presentacion.Cantidad,
+                        ["precioVenta"] = presentacion.PrecioVenta,
+                        ["activo"] = presentacion.Activo,
+                        ["unidadMedida"] = unidadMedida
+                    });
+                }
+
+                // Agregar el campo "presentaciones" al producto
+                // Si no hay presentaciones, se envía un array vacío []
+                producto["presentaciones"] = presentacionesJson;
+            }
+
+            return productos;
+        }
+
+        public bool HabilitarDeshabilitarProducto(long id) {
+            var consulta = $"""
+                UPDATE adv__producto
+                SET activo = NOT activo
+                WHERE id_producto = @IdProducto;
+                """;
+
+            var parametros = new Dictionary<string, object> {
+                { "@IdProducto", id }
+            };
+
+            ContextoBaseDatos.EjecutarComandoNoQuery(consulta, parametros);
+
+            consulta = $"""
+                SELECT activo
+                FROM adv__producto
+                WHERE id_producto = @IdProducto;
+                """;
+
+            return ContextoBaseDatos.EjecutarConsultaEscalar<bool>(consulta, parametros);
+        }
+
+        public (decimal disponible, decimal comprometido) ObtenerDisponibilidadProducto(long idProducto, long idAlmacen, long idPedidoExcluir = 0) {
+            var consulta = $"""
+                SELECT 
+                COALESCE(SUM(i.cantidad), 0) as disponible,
+                COALESCE((
+                    SELECT SUM(dpp.cantidad_solicitada)
+                    FROM adv__detalle_pedido_producto dpp
+                    INNER JOIN adv__pedido p ON dpp.id_pedido = p.id_pedido
+                    WHERE dpp.id_producto = @idProducto
+                    AND p.estado_pedido IN ('Pendiente', 'Confirmado', 'Preparando')
+                    AND p.activo = 1
+                    AND p.id_pedido != @idPedidoExcluir
+                ), 0) as comprometido
+                FROM adv__inventario i
+                WHERE i.id_producto = @idProducto 
+                {(idAlmacen != 0 ? "AND i.id_almacen = @idAlmacen" : string.Empty)};
+                """;
+
+            var parametros = new Dictionary<string, object> {
+                { "@idProducto", idProducto },
+                { "@idPedidoExcluir", idPedidoExcluir }
+            };
+
+            if (idAlmacen != 0)
+                parametros.Add("@idAlmacen", idAlmacen);
+
+            using (var connection = ContextoBaseDatos.ObtenerConexionOptimizada()) {
+                connection.Open();
+
+                using (var command = new MySqlCommand(consulta, connection)) {
+                    foreach (var param in parametros)
+                        command.Parameters.AddWithValue(param.Key, param.Value);
+
+                    using (var lector = command.ExecuteReader()) {
+                        if (lector.Read()) {
+                            decimal disponible = Convert.ToDecimal(lector["disponible"], CultureInfo.InvariantCulture);
+                            decimal comprometido = Convert.ToDecimal(lector["comprometido"], CultureInfo.InvariantCulture);
+
+                            return (disponible, comprometido);
+                        }
+                    }
+                }
+            }
+
+            return (0, 0);
+        }
+
+        #endregion
+    }
+}

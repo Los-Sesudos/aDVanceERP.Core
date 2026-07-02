@@ -1,0 +1,1 @@
+Los módulos o extensiones del Core se colocan en éste directorio.

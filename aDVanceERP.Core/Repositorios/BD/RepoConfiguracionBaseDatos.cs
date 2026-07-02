@@ -1,0 +1,122 @@
+﻿using aDVanceERP.Core.Modelos.BD;
+using aDVanceERP.Core.Modelos.Comun.Interfaces;
+using aDVanceERP.Core.Repositorios.Comun.Interfaces;
+
+using System.Security.Cryptography;
+using System.Text;
+
+namespace aDVanceERP.Core.Repositorios.BD {
+    public class RepoConfiguracionBaseDatos : IRepoConfiguracionBaseDatos<ConfiguracionBaseDatos> {
+        private const string NombreArchivo = "confServidorMySQL.json";
+
+        private List<ConfiguracionBaseDatos> _configuraciones = new List<ConfiguracionBaseDatos>();
+        private readonly string _directorioRaiz = ".\\settings";
+
+        public ConfiguracionBaseDatos? ObtenerPorId(object id) {
+            var rutaArchivo = Path.Combine(_directorioRaiz, (long.TryParse(id.ToString(), out long result) ? result : 0m) <= 0 ? NombreArchivo : id.ToString());
+
+            if (File.Exists(rutaArchivo)) {
+                var contenido = File.ReadAllText(rutaArchivo);
+
+                _configuraciones = System.Text.Json.JsonSerializer.Deserialize<List<ConfiguracionBaseDatos>>(contenido) ?? new List<ConfiguracionBaseDatos>();
+
+                // Descifrar la contraseña después de cargarla
+                foreach (var config in _configuraciones) {
+                    if (!string.IsNullOrEmpty(config.Password)) {
+                        try {
+                            var cifradoBytes = Convert.FromBase64String(config.Password);
+                            var descifradoBytes = ProtectedData.Unprotect(cifradoBytes, null, DataProtectionScope.CurrentUser);
+
+                            config.Password = Encoding.UTF8.GetString(descifradoBytes);
+                        } catch {
+                            // Si ocurre un error al descifrar, dejar la contraseña como está
+                        }
+                    }
+                }
+            } else {
+                return ConfiguracionBaseDatos.Default;
+            }
+
+            return _configuraciones.FirstOrDefault() ?? new ConfiguracionBaseDatos();
+        }
+
+        public List<(ConfiguracionBaseDatos entidadBase, List<IEntidadBase> entidadesExtra)> ObtenerTodos() {
+            var rutaArchivo = Path.Combine(_directorioRaiz, NombreArchivo);
+
+            if (File.Exists(rutaArchivo)) {
+                var contenido = File.ReadAllText(rutaArchivo);
+
+                _configuraciones = System.Text.Json.JsonSerializer.Deserialize<List<ConfiguracionBaseDatos>>(contenido) ?? new List<ConfiguracionBaseDatos>();
+
+                // Descifrar la contraseña después de cargarla
+                foreach (var config in _configuraciones) {
+                    if (!string.IsNullOrEmpty(config.Password)) {
+                        try {
+                            var cifradoBytes = Convert.FromBase64String(config.Password);
+                            var descifradoBytes = ProtectedData.Unprotect(cifradoBytes, null, DataProtectionScope.CurrentUser);
+                            
+                            config.Password = Encoding.UTF8.GetString(descifradoBytes);
+                        } catch {
+                            // Si ocurre un error al descifrar, dejar la contraseña como está
+                        }
+                    }
+                }
+            } else {
+                _configuraciones = new List<ConfiguracionBaseDatos>();
+            }
+
+            // Convertir la lista de ConfiguracionBaseDatos a la lista de tuplas requerida
+            var resultado = _configuraciones
+                .Select(c => (c, new List<IEntidadBase>()))
+                .ToList();
+
+            return resultado;
+        }
+
+        public void Salvar(string directorio, ConfiguracionBaseDatos entidad) {
+            if (string.IsNullOrWhiteSpace(directorio)) {
+                directorio = _directorioRaiz;
+            }
+
+            if (entidad == null) {
+                throw new ArgumentNullException(nameof(entidad), "La entidad no puede ser nula.");
+            }
+
+            if (!Directory.Exists(directorio)) {
+                Directory.CreateDirectory(directorio);
+            }
+
+            var rutaArchivo = Path.Combine(_directorioRaiz, NombreArchivo);
+
+            _configuraciones.Clear();
+
+            // Cifrar la contraseña antes de guardarla
+            var bytes = Encoding.UTF8.GetBytes(entidad.Password ?? string.Empty);
+            var cifrado = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+
+            entidad.Password = Convert.ToBase64String(cifrado);
+
+            _configuraciones.Add(entidad);
+
+            // Serializar la lista de configuraciones a JSON con formato indentado
+            var contenido = System.Text.Json.JsonSerializer.Serialize(_configuraciones, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+            using (var stream = new FileStream(rutaArchivo, FileMode.Create, FileAccess.Write, FileShare.None)) {
+                using (var writer = new StreamWriter(stream)) {
+                    writer.Write(contenido);
+                }
+            }
+        }
+
+        public void Dispose() {
+            //...
+        }
+
+        #region SINGLETON
+
+        public static RepoConfiguracionBaseDatos Instancia { get; } = new RepoConfiguracionBaseDatos();
+
+        #endregion
+
+    }
+}

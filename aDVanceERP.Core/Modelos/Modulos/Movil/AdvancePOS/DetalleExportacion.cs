@@ -1,0 +1,23 @@
+using System.Text.Json.Serialization;
+
+namespace aDVanceERP.Core.Modelos.Modulos.Movil.AdvancePOS {
+    public class DetalleExportacion {
+        [JsonPropertyName("idProducto")]
+        public long IdProducto { get; set; }
+
+        [JsonPropertyName("idPresentacion")]
+        public long IdPresentacion { get; set; } = 0;
+
+        [JsonPropertyName("cantidad")]
+        public decimal Cantidad { get; set; }
+
+        [JsonPropertyName("precioVentaUnitario")]
+        public decimal PrecioVentaUnitario { get; set; }
+
+        [JsonPropertyName("descuentoItem")]
+        public decimal DescuentoItem { get; set; } = 0;
+
+        [JsonPropertyName("subtotal")]
+        public decimal Subtotal { get; set; }
+    }
+}
