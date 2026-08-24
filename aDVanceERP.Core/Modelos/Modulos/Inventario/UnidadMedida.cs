@@ -41,7 +41,7 @@ namespace aDVanceERP.Core.Modelos.Modulos.Inventario {
         }
 
         public override string ToString() {
-            return $"{Nombre} ({Abreviatura})";
+            return $"{Nombre}";
         }
     }
 

@@ -18,7 +18,8 @@ namespace aDVanceERP.Core.Modelos.Modulos.Venta {
 
         public long Id { get; set; }
         public long? IdPedido { get; set; }
-        public long IdCliente { get; set; }
+        public long IdEmpleado { get; set; }
+        public long? IdCliente { get; set; }
         public long? IdCuentaUsuario { get; set; }
         public long IdAlmacenOrigen { get; set; }
         public string? NumeroFacturaTicket { get; set; }
@@ -43,8 +44,10 @@ namespace aDVanceERP.Core.Modelos.Modulos.Venta {
     public enum FiltroBusquedaVenta {
         Todas,
         Id,
-        [Display(Name = "Identificador del cliente")]
-        IdCliente,
+        [Display(Name = "Nombre del empleado")]
+        NombreEmpleado,
+        [Display(Name = "Nombre del cliente")]
+        NombreCliente,
         [Display(Name = "Número de factura/Ticket")]
         NumeroFactura,
         Estado,

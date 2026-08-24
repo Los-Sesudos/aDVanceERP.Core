@@ -1,5 +1,7 @@
 ﻿using aDVanceERP.Core.Modelos.Comun.Interfaces;
 
+using System.ComponentModel.DataAnnotations;
+
 namespace aDVanceERP.Core.Modelos.Modulos.Maestros {
     public class Persona : IEntidadBaseDatos, IComparable<Persona> {
         public Persona() {
@@ -44,16 +46,9 @@ namespace aDVanceERP.Core.Modelos.Modulos.Maestros {
     public enum FiltroBusquedaPersona {
         Todos,
         Id,
+        [Display(Name = "Nombre completo")]
         NombreCompleto,
+        [Display(Name = "Número de documento")]
         NumeroDocumento
-    }
-
-    public static class UtilesBusquedaPersona {
-        public static object[] FiltroBusquedaPersona = {
-            "Todas las personas",
-            "Identificador de BD",
-            "Nombre completo",
-            "Número de documento"
-        };
     }
 }

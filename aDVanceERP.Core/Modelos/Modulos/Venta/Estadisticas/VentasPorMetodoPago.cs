@@ -3,5 +3,6 @@
         public string MetodoPago { get; set; } = string.Empty;
         public decimal Monto { get; set; }
         public int Cantidad { get; set; }
+        public decimal Porcentaje { get; internal set; }
     }
 }

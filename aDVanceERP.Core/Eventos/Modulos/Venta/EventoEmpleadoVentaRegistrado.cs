@@ -1,0 +1,10 @@
+﻿using aDVanceERP.Core.Modelos.Modulos.Comun;
+using aDVanceERP.Core.Modelos.Modulos.Maestros;
+
+namespace aDVanceERP.Core.Eventos.Modulos.Venta {
+    public class EventoEmpleadoVentaRegistrado {
+        public Empleado Empleado { get; set; } = null!;
+        public Persona Persona { get; set; } = null!;
+        public IEnumerable<TelefonoContacto> Telefonos { get; set; } = null!;
+    }
+}

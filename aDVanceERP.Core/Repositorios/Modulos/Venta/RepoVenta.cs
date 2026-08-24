@@ -19,6 +19,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
             var comando = $"""
                 INSERT INTO adv__venta (
                     id_pedido,
+                    id_empleado,
                     id_cliente,
                     id_cuenta_usuario,
                     id_almacen_origen,
@@ -36,6 +37,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
                     tasa_cambio_aplicada
                 ) VALUES (
                     @id_pedido,
+                    @id_empleado,
                     @id_cliente,
                     @id_cuenta_usuario,
                     @id_almacen_origen,
@@ -56,7 +58,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
 
             parametros = new Dictionary<string, object> {
                 { "@id_pedido", entidad.IdPedido.HasValue ? entidad.IdPedido.Value : DBNull.Value },
-                { "@id_cliente", entidad.IdCliente },
+                { "@id_empleado", entidad.IdEmpleado },
+                { "@id_cliente", entidad.IdCliente.HasValue ? entidad.IdCliente.Value : DBNull.Value },
                 { "@id_cuenta_usuario", entidad.IdCuentaUsuario.HasValue ? entidad.IdCuentaUsuario.Value : DBNull.Value },
                 { "@id_almacen_origen", entidad.IdAlmacenOrigen },
                 { "@numero_factura_ticket", entidad.NumeroFacturaTicket ?? (object)DBNull.Value },
@@ -81,6 +84,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
                 UPDATE adv__venta 
                 SET 
                     id_pedido = @id_pedido,
+                    id_empleado = @id_empleado,
                     id_cliente = @id_cliente,
                     id_cuenta_usuario = @id_cuenta_usuario,
                     id_almacen_origen = @id_almacen_origen,
@@ -102,7 +106,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
             parametros = new Dictionary<string, object> {
                 { "@id_venta", entidad.Id },
                 { "@id_pedido", entidad.IdPedido.HasValue ? entidad.IdPedido.Value : DBNull.Value },
-                { "@id_cliente", entidad.IdCliente },
+                { "@id_empleado", entidad.IdEmpleado },
+                { "@id_cliente", entidad.IdCliente.HasValue ? entidad.IdCliente.Value : DBNull.Value },
                 { "@id_cuenta_usuario", entidad.IdCuentaUsuario.HasValue ? entidad.IdCuentaUsuario.Value : DBNull.Value },
                 { "@id_almacen_origen", entidad.IdAlmacenOrigen },
                 { "@numero_factura_ticket", entidad.NumeroFacturaTicket ?? (object)DBNull.Value },
@@ -141,8 +146,10 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
             var criterio = criteriosBusqueda.Length == 3 ? criteriosBusqueda[2] : criteriosBusqueda.Length > 0 ? criteriosBusqueda[0] : string.Empty;
 
             var consultaComun = $"""
-                SELECT v.*, c.nombre_completo as nombre_cliente 
+                SELECT v.*, e.nombre_completo as nombre_empleado, c.nombre_completo as nombre_cliente
                 FROM adv__venta v 
+                LEFT JOIN adv__empleado em ON v.id_empleado = em.id_empleado 
+                LEFT JOIN adv__persona e ON em.id_persona = e.id_persona 
                 LEFT JOIN adv__cliente cl ON v.id_cliente = cl.id_cliente 
                 LEFT JOIN adv__persona c ON cl.id_persona = c.id_persona 
                 WHERE v.activo = @activo 
@@ -154,9 +161,13 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
                     {consultaComun}
                     AND v.id_venta = @id_venta
                     """,
-                FiltroBusquedaVenta.IdCliente => $"""
+                FiltroBusquedaVenta.NombreEmpleado => $"""
                     {consultaComun}
-                    AND v.id_cliente = @id_cliente
+                    AND nombre_empleado = @nombre_empleado
+                    """,
+                FiltroBusquedaVenta.NombreCliente => $"""
+                    {consultaComun}
+                    AND nombre_cliente = @nombre_cliente
                     """,
                 FiltroBusquedaVenta.NumeroFactura => $"""
                     {consultaComun}
@@ -174,8 +185,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
                     { "@id_venta", Convert.ToInt64(string.IsNullOrEmpty(criterio) ? "0" : criterio) },
                     { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
                 },
-                FiltroBusquedaVenta.IdCliente => new Dictionary<string, object> {
-                    { "@id_cliente", Convert.ToInt64(string.IsNullOrEmpty(criterio) ? "0" : criterio) },
+                FiltroBusquedaVenta.NombreEmpleado => new Dictionary<string, object> {
+                    { "@nombre_empleado", Convert.ToString(string.IsNullOrEmpty(criterio) ? string.Empty : criterio) },
+                    { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
+                },
+                FiltroBusquedaVenta.NombreCliente => new Dictionary<string, object> {
+                    { "@nombre_cliente", Convert.ToString(string.IsNullOrEmpty(criterio) ? string.Empty : criterio) },
                     { "@activo", !filtroBusqueda.ToString().Equals("Inactivos", StringComparison.OrdinalIgnoreCase) }
                 },
                 FiltroBusquedaVenta.NumeroFactura => new Dictionary<string, object> {
@@ -203,7 +218,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
             var venta = new Modelos.Modulos.Venta.Venta {
                 Id = Convert.ToInt64(lector["id_venta"]),
                 IdPedido = lector["id_pedido"] != DBNull.Value ? Convert.ToInt64(lector["id_pedido"]) : null,
-                IdCliente = Convert.ToInt64(lector["id_cliente"]),
+                IdEmpleado = Convert.ToInt64(lector["id_empleado"]),
+                IdCliente = lector["id_cliente"] != DBNull.Value ? Convert.ToInt64(lector["id_cliente"]) : null,
                 IdCuentaUsuario = lector["id_cuenta_usuario"] != DBNull.Value ? Convert.ToInt64(lector["id_cuenta_usuario"]) : null,
                 IdAlmacenOrigen = Convert.ToInt64(lector["id_almacen_origen"]),
                 NumeroFacturaTicket = lector["numero_factura_ticket"] != DBNull.Value ? Convert.ToString(lector["numero_factura_ticket"]) : null,
@@ -222,7 +238,10 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
 
             var entidadesExtra = new List<IEntidadBaseDatos>();
 
-            if (lector.VisibleFieldCount > 17) {
+            if (lector.VisibleFieldCount > 18) {
+                entidadesExtra.Add(new Persona {
+                    NombreCompleto = Convert.ToString(lector["nombre_empleado"]) ?? "N/A"
+                });
                 entidadesExtra.Add(new Persona {
                     NombreCompleto = Convert.ToString(lector["nombre_cliente"]) ?? "N/A"
                 });

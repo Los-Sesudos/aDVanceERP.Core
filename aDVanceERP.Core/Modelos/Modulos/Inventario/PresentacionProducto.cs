@@ -33,6 +33,9 @@ namespace aDVanceERP.Core.Modelos.Modulos.Inventario {
         public bool Activo { get; set; }
         public decimal PrecioPorUnidad => Cantidad > 0 ? PrecioVenta / Cantidad : 0m;
 
+        public string NombreUnidadMedida { get; set; }
+        public string AbreviaturaUnidadMedida { get; set; }
+
         public override bool Equals(object? obj) {
             return Equals(obj as PresentacionProducto);
         }
@@ -52,7 +55,7 @@ namespace aDVanceERP.Core.Modelos.Modulos.Inventario {
         }
 
         public override string ToString() {
-            return $"";
+            return NombreUnidadMedida;
         }
     }
 

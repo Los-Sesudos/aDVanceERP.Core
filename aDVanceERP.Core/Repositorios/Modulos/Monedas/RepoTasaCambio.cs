@@ -152,6 +152,39 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
         }
 
         /// <summary>
+        /// Igual que <see cref="ObtenerTasaVigente"/>, pero solo considera tasas marcadas
+        /// con aplica_efectivo = 1. Es la que debe usarse para convertir el arqueo físico
+        /// de caja — no la tasa oficial de referencia si esta difiere.
+        /// Devuelve 1 si no existe ninguna tasa de efectivo vigente (monedas iguales o sin datos).
+        /// </summary>
+        public decimal ObtenerTasaVigenteEfectivo(long idMonedaOrigen, long idMonedaDestino) {
+            if (idMonedaOrigen == idMonedaDestino)
+                return 1m;
+
+            var consulta = """
+                SELECT tasa
+                FROM adv__tasa_cambio
+                WHERE id_moneda_origen  = @origen
+                  AND id_moneda_destino = @destino
+                  AND fecha <= CURDATE()
+                  AND aplica_efectivo = 1
+                ORDER BY fecha DESC
+                LIMIT 1;
+                """;
+
+            var parametros = new Dictionary<string, object> {
+                { "@origen",  idMonedaOrigen  },
+                { "@destino", idMonedaDestino }
+            };
+
+            var resultado = ContextoBaseDatos.EjecutarConsultaEscalar<object>(consulta, parametros);
+
+            return resultado != null && resultado != DBNull.Value
+                ? Convert.ToDecimal(resultado)
+                : 1m;
+        }
+
+        /// <summary>
         /// Convierte <paramref name="monto"/> desde <paramref name="idMonedaOrigen"/>
         /// a <paramref name="idMonedaDestino"/> usando la tasa vigente.
         /// </summary>

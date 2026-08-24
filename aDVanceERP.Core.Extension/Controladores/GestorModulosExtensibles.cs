@@ -24,7 +24,8 @@ namespace aDVanceERP.Core.Extension.Controladores {
         public void CargarModulos(IPresentadorVistaPrincipal<IVistaPrincipal> principal, IProgress<(string texto, int porcentaje)> progreso) {
             ContextoModulos.NombresModulosCargados.Clear();
 
-            var archivosDll = Directory.GetFiles(".\\modules\\", "*.dll");
+            //var archivosDll = Directory.GetFiles(".\\modules\\", "*.dll");
+            var archivosDll = Directory.GetFiles(".\\", "*.dll");
 
             foreach (var rutaArchivo in archivosDll) {
                 try {

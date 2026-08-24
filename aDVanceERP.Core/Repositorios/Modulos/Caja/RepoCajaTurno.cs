@@ -2,6 +2,7 @@
 using aDVanceERP.Core.Modelos.Comun.Interfaces;
 using aDVanceERP.Core.Modelos.Modulos.Caja;
 using aDVanceERP.Core.Repositorios.BD;
+using aDVanceERP.Core.Repositorios.Modulos.Monedas;
 
 using MySql.Data.MySqlClient;
 
@@ -213,6 +214,18 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         // ── Operaciones específicas del dominio de caja ───────────
 
         /// <summary>
+        /// Conteo monotónico para numerar turnos — incluye anulados para nunca 
+        /// reutilizar un número ya emitido.
+        /// </summary>
+        public int ObtenerCorrelativoTurnoHoy()
+            => ContextoBaseDatos.EjecutarConsultaEscalar<int>("""
+                SELECT COUNT(*)
+                FROM adv__caja_turno
+                WHERE DATE(fecha_apertura) = CURDATE()
+                  AND activo = 1;
+                """);
+
+        /// <summary>
         /// Verifica si existe un turno con estado Abierto para el almacén indicado.
         /// El presentador llama a esto ANTES de abrir un nuevo turno (regla: 1 turno activo por almacén).
         /// </summary>
@@ -278,7 +291,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
             var correlativo = ContextoBaseDatos.EjecutarConsultaEscalar<int>(consulta, parametros);
 
-            return $"TRN-{fechaHoy}-{correlativo:D4}";
+            return $"TRN-{fechaHoy}-{idAlmacen:D2}{correlativo:D2}";
         }
 
         /// <summary>
@@ -347,47 +360,82 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         }
 
         /// <summary>
-        /// Resumen del arqueo de efectivo de un turno.
-        /// Suma los subtotales de todas las denominaciones contadas.
+        /// Resumen del arqueo de efectivo de un turno, UNA SOLA moneda (compatibilidad).
+        /// Para turnos multimoneda usar <see cref="ObtenerResumenArqueoPorMoneda"/>.
         /// </summary>
-        public ResumenArqueo ObtenerResumenArqueo(long idTurno) {
+        [Obsolete("Usar ObtenerResumenArqueoPorMoneda para soporte multimoneda.")]
+        public ResumenArqueo ObtenerResumenArqueo(long idTurno) =>
+            ObtenerResumenArqueoPorMoneda(idTurno).FirstOrDefault()
+                ?? new ResumenArqueo { IdTurno = idTurno };
+
+        /// <summary>
+        /// Resumen del arqueo de efectivo de un turno, desglosado por moneda.
+        /// Cada ResumenArqueo trae su propio TotalContado (en su moneda) y, para
+        /// las monedas que no son la base, la tasa de efectivo vigente aplicada
+        /// (ver <see cref="RepoTasaCambio.ObtenerTasaVigenteEfectivo"/>) más
+        /// TotalContadoBase ya convertido.
+        /// </summary>
+        public List<ResumenArqueo> ObtenerResumenArqueoPorMoneda(long idTurno) {
             var consulta = """
                 SELECT
-                    id_arqueo,
-                    id_turno,
-                    denominacion,
-                    cantidad,
-                    subtotal
-                FROM adv__caja_arqueo
-                WHERE id_turno = @id_turno
-                ORDER BY denominacion DESC;
+                    ca.id_arqueo,
+                    ca.id_turno,
+                    ca.id_moneda,
+                    m.codigo AS codigo_moneda,
+                    ca.denominacion,
+                    ca.cantidad,
+                    ca.subtotal
+                FROM adv__caja_arqueo ca
+                INNER JOIN adv__moneda m ON ca.id_moneda = m.id_moneda
+                WHERE ca.id_turno = @id_turno
+                ORDER BY ca.id_moneda, ca.denominacion DESC;
                 """;
 
             var parametros = new Dictionary<string, object> {
                 { "@id_turno", idTurno }
             };
 
-            var denominaciones = ContextoBaseDatos.EjecutarConsulta(consulta, parametros, MapearArqueo)
+            var filas = ContextoBaseDatos.EjecutarConsulta(consulta, parametros, MapearArqueoConMoneda)
                 .Select(r => r.entidadBase)
                 .ToList();
 
-            return new ResumenArqueo {
-                IdTurno = idTurno,
-                Denominaciones = denominaciones,
-                TotalContado = denominaciones.Sum(d => d.Subtotal)
-            };
+            var idMonedaBase = RepoMoneda.Instancia.ObtenerMonedaBase().Id;
+
+            return filas
+                .GroupBy(f => f.arqueo.IdMoneda)
+                .Select(g => {
+                    var idMoneda = g.Key;
+                    var tasa = idMoneda == idMonedaBase
+                        ? 1m
+                        : RepoTasaCambio.Instancia.ObtenerTasaVigenteEfectivo(idMoneda, idMonedaBase);
+
+                    return new ResumenArqueo {
+                        IdTurno = idTurno,
+                        IdMoneda = idMoneda,
+                        CodigoMoneda = g.First().codigoMoneda,
+                        Denominaciones = g.Select(x => x.arqueo).ToList(),
+                        TotalContado = g.Sum(x => x.arqueo.Subtotal),
+                        TasaCambioAplicada = tasa
+                    };
+                })
+                .OrderByDescending(r => r.IdMoneda == idMonedaBase) // moneda base primero
+                .ThenBy(r => r.CodigoMoneda)
+                .ToList();
         }
 
-        private (CajaArqueo, List<IEntidadBaseDatos>) MapearArqueo(MySqlDataReader lector) {
+        private ((CajaArqueo arqueo, string codigoMoneda) entidadBase, List<IEntidadBaseDatos> entidadesExtra) MapearArqueoConMoneda(MySqlDataReader lector) {
             var arqueo = new CajaArqueo {
                 Id = Convert.ToInt64(lector["id_arqueo"]),
                 IdTurno = Convert.ToInt64(lector["id_turno"]),
+                IdMoneda = Convert.ToInt64(lector["id_moneda"]),
                 Denominacion = Convert.ToDecimal(lector["denominacion"], CultureInfo.InvariantCulture),
                 Cantidad = Convert.ToInt32(lector["cantidad"]),
                 Subtotal = Convert.ToDecimal(lector["subtotal"], CultureInfo.InvariantCulture)
             };
 
-            return (arqueo, new List<IEntidadBaseDatos>());
+            var codigoMoneda = Convert.ToString(lector["codigo_moneda"]) ?? string.Empty;
+
+            return ((arqueo, codigoMoneda), new List<IEntidadBaseDatos>());
         }
     }
 }

@@ -42,6 +42,18 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Estadisticas {
             return ContextoBaseDatos.EjecutarConsultaEscalar<int>(sql);
         }
 
+        /// <summary>
+        /// Conteo monotónico para numerar tickets — incluye anuladas para nunca 
+        /// reutilizar un número ya emitido.
+        /// </summary>
+        public int ObtenerCorrelativoVentasHoy()
+            => ContextoBaseDatos.EjecutarConsultaEscalar<int>("""
+                SELECT COUNT(*)
+                FROM adv__venta
+                WHERE DATE(fecha) = CURDATE()
+                  AND activo = 1;
+                """);
+
         public decimal ObtenerIngresosHoy()
             => ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(@"
                 SELECT COALESCE(SUM(importe_total), 0)
@@ -145,23 +157,27 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Estadisticas {
                 .ToList();
         }
 
-        /// <summary>Distribución de ventas por método de pago en el mes actual.</summary>
+        /// <summary>
+        /// Distribución de ventas por método de pago en el mes actual.
+        /// </summary>
         public List<VentasPorMetodoPago> ObtenerDistribucionMetodosPago() {
-            var consulta = @"
+            var consulta = """
                 SELECT
                     p.metodo_pago,
-                    SUM(p.monto_pagado)     AS monto,
-                    COUNT(p.id_pago)        AS cantidad
+                    SUM(COALESCE(p.monto_moneda_base, p.monto_pagado)) AS monto,
+                    COUNT(p.id_pago)                                   AS cantidad
                 FROM adv__pago p
                 INNER JOIN adv__venta v ON p.id_venta = v.id_venta
                 WHERE YEAR(v.fecha)  = YEAR(CURDATE())
                   AND MONTH(v.fecha) = MONTH(CURDATE())
-                  AND v.estado_venta IN ('Completada')
+                  AND v.estado_venta = 'Completada'
                   AND v.activo = 1
+                  AND p.estado_pago = 'Confirmado'
                 GROUP BY p.metodo_pago
-                ORDER BY monto DESC";
+                ORDER BY monto DESC
+                """;
 
-            return ContextoBaseDatos
+            var resultados = ContextoBaseDatos
                 .EjecutarConsulta(consulta, null, lector => {
                     var item = new VentasPorMetodoPago {
                         MetodoPago = lector["metodo_pago"]?.ToString() ?? string.Empty,
@@ -172,6 +188,16 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Estadisticas {
                 })
                 .Select(r => r.entidadBase)
                 .ToList();
+
+            decimal montoTotal = resultados.Sum(r => r.Monto);
+
+            foreach (var item in resultados) {
+                item.Porcentaje = montoTotal > 0
+                    ? Math.Round((item.Monto / montoTotal) * 100, 1)
+                    : 0;
+            }
+
+            return resultados;
         }
 
         #region SINGLETON

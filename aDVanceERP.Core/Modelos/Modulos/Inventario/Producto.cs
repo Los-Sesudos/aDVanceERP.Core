@@ -85,6 +85,10 @@ namespace aDVanceERP.Core.Modelos.Modulos.Inventario {
         public override int GetHashCode() {
             return Id.GetHashCode();
         }
+
+        public override string ToString() {
+            return Nombre;
+        }
     }
 
     public enum FiltroBusquedaProducto {

@@ -103,9 +103,10 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
                 : string.Empty;
 
             const string baseQuery = """
-                SELECT pp.*, p.nombre AS nombre_producto, p.precio_venta_base
+                SELECT pp.*, p.nombre AS nombre_producto, p.precio_venta_base, um.nombre, um.abreviatura
                 FROM adv__precio_presentacion pp
                 LEFT JOIN adv__producto p ON pp.id_producto = p.id_producto
+                LEFT JOIN adv__unidad_medida um ON pp.id_unidad_medida = um.id_unidad_medida
                 """;
 
             var consulta = filtroBusqueda switch {
@@ -161,6 +162,9 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
             var entidadesExtra = new List<IEntidadBaseDatos>();
 
             if (lector.VisibleFieldCount > 6) {
+                presentacion.NombreUnidadMedida = Convert.ToString(lector["nombre"]) ?? string.Empty;
+                presentacion.AbreviaturaUnidadMedida = Convert.ToString(lector["abreviatura"]) ?? string.Empty;
+
                 entidadesExtra.Add(new Producto {
                     Nombre = Convert.ToString(lector["nombre_producto"]) ?? string.Empty,
                     PrecioVentaBase = lector["precio_venta_base"] != DBNull.Value

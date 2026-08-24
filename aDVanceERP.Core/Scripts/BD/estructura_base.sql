@@ -93,6 +93,17 @@ CREATE TABLE IF NOT EXISTS `adv__caja_arqueo` (
   KEY `idx_arqueo_turno` (`id_turno`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Migración: soporte multimoneda para adv__caja_arqueo
+-- La columna id_moneda ya existe (default 1 = CUP), pero la llave única
+-- actual (id_turno, denominacion) no distingue entre monedas.
+-- Sin este cambio, dos denominaciones iguales en monedas distintas
+-- (ej. un billete "5" en USD y otro "5" en EUR) colisionarían en el
+-- INSERT ... ON DUPLICATE KEY UPDATE de RepoCajaArqueo.
+
+ALTER TABLE adv__caja_arqueo
+    DROP INDEX uq_arqueo_turno_den,
+    ADD UNIQUE KEY uq_arqueo_turno_moneda_den (id_turno, id_moneda, denominacion);
+
 -- --------------------------------------------------------
 
 --
@@ -1500,8 +1511,9 @@ CREATE TABLE IF NOT EXISTS `adv__unidad_medida` (
 DROP TABLE IF EXISTS `adv__venta`;
 CREATE TABLE IF NOT EXISTS `adv__venta` (
   `id_venta` int NOT NULL AUTO_INCREMENT,
-  `id_pedido` int DEFAULT NULL,
-  `id_cliente` int NOT NULL,
+  `id_pedido` int DEFAULT 0,
+  `id_empleado` int NOT NULL DEFAULT 0,
+  `id_cliente` int DEFAULT 0,
   `id_cuenta_usuario` int DEFAULT NULL,
   `id_almacen_origen` int DEFAULT NULL,
   `numero_factura_ticket` varchar(50) DEFAULT NULL,
