@@ -200,6 +200,49 @@ namespace aDVanceERP.Core.Documentos.Comun {
                 pagina.Width - MargenDerecho, AlturaBanner - 5);
         }
 
+        /// <summary>
+        /// Banner reducido para páginas 2 en adelante — una sola línea con lo esencial,
+        /// para maximizar el espacio útil de la página.
+        /// </summary>
+        protected virtual double DibujarBannerCompacto(XGraphics gfx, PdfPage pagina,
+                                                        string tipoDocumento,
+                                                        string numeroDocumento = null) {
+            double y = MargenSuperior;
+
+            string encabezado = !string.IsNullOrEmpty(numeroDocumento)
+                ? $"{tipoDocumento.ToUpper()} — {numeroDocumento}"
+                : tipoDocumento.ToUpper();
+
+            gfx.DrawString(encabezado, FontPequeno, new XSolidBrush(ColorTextoSecundario),
+                new XPoint(MargenIzquierdo, y + 10));
+
+            gfx.DrawString(NombreEmpresa, FontPequeno, new XSolidBrush(ColorTextoSecundario),
+                new XRect(MargenIzquierdo, y, pagina.Width - MargenIzquierdo - MargenDerecho, 14),
+                XStringFormats.TopRight);
+
+            y += 18;
+            gfx.DrawLine(new XPen(ColorPrimario, 1), MargenIzquierdo, y, pagina.Width - MargenDerecho, y);
+
+            return y + 10;
+        }
+
+        /// <summary>
+        /// Punto de entrada único para el encabezado de cualquier página de cualquier documento:
+        /// banner completo en la primera página, banner compacto en el resto. Devuelve el yPos
+        /// donde debe empezar el contenido — ya no hace falta llamar aparte a
+        /// ObtenerInicioPosicionContenido().
+        /// </summary>
+        protected double DibujarEncabezadoDocumento(XGraphics gfx, PdfPage pagina, string tipoDocumento,
+                                                     string numeroDocumento, DateTime? fechaDocumento,
+                                                     bool primeraPagina) {
+            if (primeraPagina) {
+                DibujarBannerProfesional(gfx, pagina, tipoDocumento, numeroDocumento, fechaDocumento);
+                return ObtenerInicioPosicionContenido();
+            }
+
+            return DibujarBannerCompacto(gfx, pagina, tipoDocumento, numeroDocumento);
+        }
+
         #endregion
 
         #region Encabezado de Tabla
