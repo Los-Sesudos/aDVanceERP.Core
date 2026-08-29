@@ -21,6 +21,8 @@ namespace aDVanceERP.Core.Modelos.Modulos.Comun {
         [Display(Name = "Caja Registradora", Description = "Proporciona funcionalidades de gestión de caja registradora y turnos.")]
         MOD_CAJA_REGISTRADORA,
         [Display(Name = "Servicios", Description = "Proporciona funcionalidades de gestión de servicios.")]
-        MOD_SERVICIOS
+        MOD_SERVICIOS,
+        [Display(Name = "Configuración", Description = "Proporciona configuraciones generales para la aplicación y los módulos de sistema.")]
+        MOD_CONFIGURACION
     }
 }

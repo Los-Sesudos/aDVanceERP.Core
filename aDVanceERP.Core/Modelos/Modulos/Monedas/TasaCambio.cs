@@ -1,4 +1,5 @@
 ﻿using aDVanceERP.Core.Modelos.Comun.Interfaces;
+using aDVanceERP.Core.Modelos.Modulos.Seguridad;
 
 using System.ComponentModel.DataAnnotations;
 
@@ -11,7 +12,8 @@ namespace aDVanceERP.Core.Modelos.Modulos.Monedas {
         public TasaCambio() { }
 
         public TasaCambio(long id, long idMonedaOrigen, long idMonedaDestino,
-                          DateOnly fecha, decimal tasa, string? fuente,
+                          DateTime fecha, decimal tasa, string? fuente,
+                          long idCuentaUsuario, DateTime fechaRegistro, 
                           bool aplicaEfectivo) {
             Id = id;
             IdMonedaOrigen = idMonedaOrigen;
@@ -19,13 +21,15 @@ namespace aDVanceERP.Core.Modelos.Modulos.Monedas {
             Fecha = fecha;
             Tasa = tasa;
             Fuente = fuente;
+            IdCuentaUsuario = idCuentaUsuario;
+            FechaRegistro = fechaRegistro;
             AplicaEfectivo = aplicaEfectivo;
         }
 
         public long Id { get; set; }
         public long IdMonedaOrigen { get; set; }
         public long IdMonedaDestino { get; set; }
-        public DateOnly Fecha { get; set; }
+        public DateTime Fecha { get; set; }
 
         /// <summary>
         /// Cuántas unidades de la moneda destino equivalen a 1 unidad de la moneda origen.
@@ -34,6 +38,10 @@ namespace aDVanceERP.Core.Modelos.Modulos.Monedas {
         public decimal Tasa { get; set; }
 
         public string? Fuente { get; set; }
+
+        public long? IdCuentaUsuario { get; set; }
+
+        public DateTime FechaRegistro { get; set; }
 
         /// <summary>
         /// TRUE si la tasa aplica para transacciones en efectivo.

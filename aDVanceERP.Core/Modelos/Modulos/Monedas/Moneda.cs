@@ -6,7 +6,7 @@ namespace aDVanceERP.Core.Modelos.Modulos.Monedas {
     /// <summary>
     /// Representa una moneda del catálogo <c>adv__moneda</c>.
     /// </summary>
-    public class Moneda : IEntidadBaseDatos {
+    public class Moneda : IEquatable<Moneda>, IEntidadBaseDatos {
         public Moneda() { }
 
         public Moneda(long id, string codigo, string nombre, string simbolo,
@@ -44,7 +44,21 @@ namespace aDVanceERP.Core.Modelos.Modulos.Monedas {
         /// <summary>Moneda activa y disponible para selección.</summary>
         public bool Activa { get; set; } = true;
 
-        /// <summary>Representación legible: "CUP – Peso Cubano ($)"</summary>
+        public override bool Equals(object? obj) {
+            return Equals(obj as Moneda);
+        }
+
+        public bool Equals(Moneda? other) {
+            if (other is null)
+                return false;
+
+            if (ReferenceEquals(this, other))
+                return true;
+
+            return Id == other.Id;
+        }
+
+        /// <summary>Representación legible: "CUP"</summary>
         public override string ToString() => $"{Codigo}";
     }
 

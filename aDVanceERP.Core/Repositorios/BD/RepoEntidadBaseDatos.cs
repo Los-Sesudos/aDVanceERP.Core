@@ -216,6 +216,7 @@ namespace aDVanceERP.Core.Repositorios.BD {
         }
 
         protected virtual void Dispose(bool disposing) {
+            _cache.Clear();
         }
 
         ~RepoEntidadBaseDatos() {

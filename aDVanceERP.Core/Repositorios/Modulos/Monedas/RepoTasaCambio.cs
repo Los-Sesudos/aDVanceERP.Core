@@ -9,11 +9,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
     public class RepoTasaCambio : RepoEntidadBaseDatos<TasaCambio, FiltroBusquedaTasaCambio> {
         public RepoTasaCambio() : base("adv__tasa_cambio", "id_tasa_cambio") { }
 
-        // ── CRUD ───────────────────────────────────────────────────────────────
-
-        protected override string GenerarComandoAdicionar(
-                TasaCambio objeto, out Dictionary<string, object> parametros,
-                params IEntidadBaseDatos[] entidadesExtra) {
+        protected override string GenerarComandoAdicionar(TasaCambio objeto, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
             parametros = new Dictionary<string, object> {
                 { "@origen",          objeto.IdMonedaOrigen  },
                 { "@destino",         objeto.IdMonedaDestino },
@@ -31,9 +27,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
                 """;
         }
 
-        protected override string GenerarComandoEditar(
-                TasaCambio objeto, out Dictionary<string, object> parametros,
-                params IEntidadBaseDatos[] entidadesExtra) {
+        protected override string GenerarComandoEditar(TasaCambio objeto, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
             parametros = new Dictionary<string, object> {
                 { "@id",              objeto.Id              },
                 { "@tasa",            objeto.Tasa            },
@@ -48,16 +42,15 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
                 """;
         }
 
-        protected override string GenerarComandoEliminar(
-                long id, out Dictionary<string, object> parametros) {
-            parametros = new Dictionary<string, object> { { "@id", id } };
+        protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> parametros) {
+            parametros = new Dictionary<string, object> {
+                { "@id", id }
+            };
+
             return "DELETE FROM adv__tasa_cambio WHERE id_tasa_cambio = @id;";
         }
 
-        protected override string GenerarComandoObtener(
-                FiltroBusquedaTasaCambio filtroBusqueda,
-                out Dictionary<string, object> parametros,
-                params string[] criterios) {
+        protected override string GenerarComandoObtener(FiltroBusquedaTasaCambio filtroBusqueda, out Dictionary<string, object> parametros, params string[] criterios) {
             var c0 = criterios.Length > 0 ? criterios[0] : "0";
             var c1 = criterios.Length > 1 ? criterios[1] : "0";
 
@@ -82,7 +75,6 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
 
                 FiltroBusquedaTasaCambio.Fecha =>
                     "SELECT * FROM adv__tasa_cambio WHERE fecha = @fecha;",
-
                 _ =>
                     "SELECT * FROM adv__tasa_cambio ORDER BY fecha DESC;"
             };
@@ -105,16 +97,18 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
             return consulta;
         }
 
-        protected override (TasaCambio, List<IEntidadBaseDatos>) MapearEntidad(MySqlDataReader r) =>
-            (new TasaCambio(
-                id: Convert.ToInt64(r["id_tasa_cambio"]),
-                idMonedaOrigen: Convert.ToInt64(r["id_moneda_origen"]),
-                idMonedaDestino: Convert.ToInt64(r["id_moneda_destino"]),
-                fecha: DateOnly.FromDateTime(Convert.ToDateTime(r["fecha"])),
-                tasa: Convert.ToDecimal(r["tasa"]),
-                fuente: r["fuente"] != DBNull.Value ? Convert.ToString(r["fuente"]) : null,
-                aplicaEfectivo: Convert.ToBoolean(r["aplica_efectivo"])
-            ), new List<IEntidadBaseDatos>());
+        protected override (TasaCambio, List<IEntidadBaseDatos>) MapearEntidad(MySqlDataReader lector) =>
+            (new TasaCambio() {
+                Id = Convert.ToInt64(lector["id_tasa_cambio"]),
+                IdMonedaOrigen = Convert.ToInt64(lector["id_moneda_origen"]),
+                IdMonedaDestino = Convert.ToInt64(lector["id_moneda_destino"]),
+                Fecha = Convert.ToDateTime(lector["fecha"]),
+                Tasa = Convert.ToDecimal(lector["tasa"]),
+                Fuente = lector["fuente"] != DBNull.Value ? Convert.ToString(lector["fuente"]) : null,
+                IdCuentaUsuario = lector["id_cuenta_usuario"] != DBNull.Value ? Convert.ToInt64(lector["id_cuenta_usuario"]) : 0,
+                FechaRegistro = Convert.ToDateTime(lector["fecha_registro"]),
+                AplicaEfectivo = Convert.ToBoolean(lector["aplica_efectivo"])
+            }, new List<IEntidadBaseDatos>());
 
         // ── SINGLETON ──────────────────────────────────────────────────────────
         public static RepoTasaCambio Instancia { get; } = new RepoTasaCambio();
@@ -193,6 +187,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
                 return monto;
 
             var tasa = ObtenerTasaVigente(idMonedaOrigen, idMonedaDestino);
+
             return Math.Round(monto * tasa, 4, MidpointRounding.AwayFromZero);
         }
     }
