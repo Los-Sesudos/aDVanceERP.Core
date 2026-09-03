@@ -10,9 +10,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
 
         // ── CRUD ───────────────────────────────────────────────────────────────
 
-        protected override string GenerarComandoAdicionar(
-                Moneda objeto, out Dictionary<string, object> parametros,
-                params IEntidadBaseDatos[] entidadesExtra) {
+        protected override string GenerarComandoAdicionar(Moneda objeto, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
             parametros = new Dictionary<string, object> {
                     { "@codigo",            objeto.Codigo },
                     { "@nombre",            objeto.Nombre },

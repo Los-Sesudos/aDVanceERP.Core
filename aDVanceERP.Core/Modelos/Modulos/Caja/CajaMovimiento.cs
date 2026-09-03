@@ -1,5 +1,6 @@
 ﻿using aDVanceERP.Core.Modelos.Comun.Interfaces;
 using aDVanceERP.Core.Modelos.Modulos.Comun;
+using aDVanceERP.Core.Modelos.Modulos.Monedas;
 
 using System.ComponentModel.DataAnnotations;
 
@@ -19,6 +20,7 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
             long idTurno,
             TipoMovimientoCajaEnum tipo,
             CanalPagoEnum canalPago,
+            long idMoneda,
             long? idVenta,
             decimal monto,
             string? descripcion,
@@ -29,6 +31,7 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
             IdTurno = idTurno;
             Tipo = tipo;
             CanalPago = canalPago;
+            IdMoneda = idMoneda;
             IdVenta = idVenta;
             Monto = monto;
             Descripcion = descripcion;
@@ -36,37 +39,25 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
             FechaMovimiento = fechaMovimiento;
         }
 
-        // ── Identidad ──────────────────────────────────────────────
         public long Id { get; set; }
-
-        // ── Referencias ───────────────────────────────────────────
         public long IdTurno { get; set; }
+        public long IdMoneda { get; set; } = 1;
         public long? IdVenta { get; set; }
         public long IdCuentaUsuario { get; set; }
-
-        // ── Clasificación ─────────────────────────────────────────
         public TipoMovimientoCajaEnum Tipo { get; set; }
-
-        /// <summary>
-        /// Canal por donde fluyó el dinero.
-        /// NA para salidas manuales sin canal específico (gastos, retiros).
-        /// </summary>
         public CanalPagoEnum CanalPago { get; set; }
 
-        // ── Valor ─────────────────────────────────────────────────
-        /// <summary>Positivo = entrada a la caja. Negativo = salida de la caja.</summary>
+        /// <summary>
+        /// Positivo = entrada a la caja. Negativo = salida de la caja.
+        /// </summary>
         public decimal Monto { get; set; }
+
         public string? Descripcion { get; set; }
-
-        // ── Auditoría ─────────────────────────────────────────────
         public DateTime FechaMovimiento { get; set; }
-
-        // ── Datos auxiliares de tupla (JOIN en historial) ─────────
         public string? NumeroFactura { get; set; }
         public string? NombreUsuario { get; set; }
     }
 
-    // ── Enums ──────────────────────────────────────────────────────
 
     public enum TipoMovimientoCajaEnum {
         Venta,

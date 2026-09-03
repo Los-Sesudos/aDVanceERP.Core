@@ -3,6 +3,7 @@ using aDVanceERP.Core.Modelos.Comun.Interfaces;
 using aDVanceERP.Core.Modelos.Modulos.Caja;
 using aDVanceERP.Core.Modelos.Modulos.Comun;
 using aDVanceERP.Core.Repositorios.BD;
+using aDVanceERP.Core.Repositorios.Modulos.Monedas;
 
 using MySql.Data.MySqlClient;
 
@@ -14,8 +15,6 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
         public RepoCajaMovimiento() : base("adv__caja_movimiento", "id_movimiento_caja") { }
 
-        // ── CRUD base ─────────────────────────────────────────────
-
         protected override string GenerarComandoAdicionar(
                 CajaMovimiento entidad,
                 out Dictionary<string, object> parametros,
@@ -26,6 +25,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     id_turno,
                     tipo,
                     canal_pago,
+                    id_moneda,
                     id_venta,
                     monto,
                     descripcion,
@@ -35,6 +35,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     @id_turno,
                     @tipo,
                     @canal_pago,
+                    @id_moneda,
                     @id_venta,
                     @monto,
                     @descripcion,
@@ -47,6 +48,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 { "@id_turno",          entidad.IdTurno },
                 { "@tipo",              entidad.Tipo.ToString() },
                 { "@canal_pago",        entidad.CanalPago.ToString() },
+                { "@id_moneda",         entidad.IdMoneda },
                 { "@id_venta",          entidad.IdVenta.HasValue ? entidad.IdVenta.Value : (object)DBNull.Value },
                 { "@monto",             entidad.Monto },
                 { "@descripcion",       entidad.Descripcion ?? (object)DBNull.Value },
@@ -57,13 +59,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
             return comando;
         }
 
-        protected override string GenerarComandoEditar(
-                CajaMovimiento entidad,
-                out Dictionary<string, object> parametros,
-                params IEntidadBaseDatos[] entidadesExtra) {
-
-            // Los movimientos de caja son inmutables por diseño.
-            // Solo se permite corregir la descripción en casos excepcionales.
+        protected override string GenerarComandoEditar(CajaMovimiento entidad, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
             var comando = """
                 UPDATE adv__caja_movimiento
                 SET descripcion = @descripcion
@@ -158,6 +154,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 IdTurno = Convert.ToInt64(lector["id_turno"]),
                 Tipo = Enum.Parse<TipoMovimientoCajaEnum>(Convert.ToString(lector["tipo"]) ?? "EntradaManual"),
                 CanalPago = Enum.Parse<CanalPagoEnum>(Convert.ToString(lector["canal_pago"]) ?? "NA"),
+                IdMoneda = Convert.ToInt64(lector["id_moneda"]),
                 IdVenta = lector["id_venta"] != DBNull.Value ? Convert.ToInt64(lector["id_venta"]) : null,
                 Monto = Convert.ToDecimal(lector["monto"], CultureInfo.InvariantCulture),
                 Descripcion = lector["descripcion"] != DBNull.Value ? Convert.ToString(lector["descripcion"]) : null,
@@ -176,65 +173,57 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
         public static RepoCajaMovimiento Instancia { get; } = new RepoCajaMovimiento();
 
+        [Obsolete("Usar ObtenerTotalesPorCanalYMoneda para soporte multimoneda.")]
+        public TotalesCierreCaja ObtenerTotalesPorCanal(long idTurno) =>
+            ObtenerTotalesPorCanalYMoneda(idTurno).FirstOrDefault(t => t.IdMoneda == RepoMoneda.Instancia.ObtenerMonedaBase().Id)
+            ?? new TotalesCierreCaja { IdTurno = idTurno };
+
         /// <summary>
-        /// Calcula los totales de entradas netas por canal para el cierre del turno.
-        /// Incluye Venta, DevolucionVenta, EntradaManual y SalidaManual.
-        /// Excluye AjusteArqueo (se registra después del cálculo).
-        /// Esta es la FUENTE DE VERDAD: el presentador escribe estos valores en adv__caja_turno.
+        /// Igual que ObtenerTotalesPorCanal, pero desglosado por moneda. El monto de apertura
+        /// (siempre en moneda base) solo se suma al efectivo de la moneda base.
         /// </summary>
-        public TotalesCierreCaja ObtenerTotalesPorCanal(long idTurno) {
+        public List<TotalesCierreCaja> ObtenerTotalesPorCanalYMoneda(long idTurno) {
             var consulta = """
-                SELECT
-                    canal_pago,
-                    SUM(monto) AS total
+                SELECT id_moneda, canal_pago, SUM(monto) AS total
                 FROM adv__caja_movimiento
                 WHERE id_turno = @id_turno
                   AND tipo IN ('Venta','DevolucionVenta','EntradaManual','SalidaManual')
-                GROUP BY canal_pago;
+                GROUP BY id_moneda, canal_pago;
                 """;
 
-            var parametros = new Dictionary<string, object> {
-                { "@id_turno", idTurno }
-            };
-
-            var totales = new TotalesCierreCaja { IdTurno = idTurno };
+            var parametros = new Dictionary<string, object> { { "@id_turno", idTurno } };
 
             var resultados = ContextoBaseDatos.EjecutarConsulta(consulta, parametros, (lector) => {
+                var idMoneda = Convert.ToInt64(lector["id_moneda"]);
                 var canal = Enum.Parse<CanalPagoEnum>(Convert.ToString(lector["canal_pago"]) ?? "NA");
                 var total = Convert.ToDecimal(lector["total"], CultureInfo.InvariantCulture);
-                return (new { canal, total }, new List<IEntidadBaseDatos>());
+                return (new { idMoneda, canal, total }, new List<IEntidadBaseDatos>());
             });
 
+            var totalesPorMoneda = new Dictionary<long, TotalesCierreCaja>();
+
             foreach (var (fila, _) in resultados) {
+                if (!totalesPorMoneda.TryGetValue(fila.idMoneda, out var totales)) {
+                    totales = new TotalesCierreCaja { IdTurno = idTurno, IdMoneda = fila.idMoneda };
+                    totalesPorMoneda[fila.idMoneda] = totales;
+                }
+
                 switch (fila.canal) {
-                    case CanalPagoEnum.Efectivo:
-                        totales.TotalEfectivo = fila.total;
-                        break;
-                    case CanalPagoEnum.TransferenciaBancaria:
-                        totales.TotalTransferencias = fila.total;
-                        break;
-                    case CanalPagoEnum.Mixto:
-                        // Un pago Mixto se contabiliza en ambos canales en el momento
-                        // del registro (el presentador lo desglosa en 2 movimientos).
-                        // Si llegó aquí como Mixto es un caso no desglosado → se suma a Efectivo
-                        // por criterio conservador.
-                        totales.TotalEfectivo += fila.total;
-                        break;
+                    case CanalPagoEnum.Efectivo: totales.TotalEfectivo += fila.total; break;
+                    case CanalPagoEnum.TransferenciaBancaria: totales.TotalTransferencias += fila.total; break;
+                    case CanalPagoEnum.Mixto: totales.TotalEfectivo += fila.total; break; // mismo criterio conservador que antes
                 }
             }
 
-            // Sumar el monto de apertura al total de efectivo esperado
-            var consultaApertura = """
-                SELECT monto_apertura
-                FROM adv__caja_turno
-                WHERE id_turno = @id_turno
-                LIMIT 1;
-                """;
+            var idMonedaBase = RepoMoneda.Instancia.ObtenerMonedaBase().Id;
+            if (!totalesPorMoneda.ContainsKey(idMonedaBase))
+                totalesPorMoneda[idMonedaBase] = new TotalesCierreCaja { IdTurno = idTurno, IdMoneda = idMonedaBase };
 
-            totales.TotalEfectivo += ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(
-                consultaApertura, parametros);
+            var montoApertura = ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(
+                "SELECT monto_apertura FROM adv__caja_turno WHERE id_turno = @id_turno LIMIT 1;", parametros);
+            totalesPorMoneda[idMonedaBase].TotalEfectivo += montoApertura;
 
-            return totales;
+            return [.. totalesPorMoneda.Values];
         }
 
         /// <summary>

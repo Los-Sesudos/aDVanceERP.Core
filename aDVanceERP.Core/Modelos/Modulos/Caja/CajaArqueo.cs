@@ -79,6 +79,7 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
     /// </summary>
     public sealed class TotalesCierreCaja {
         public long IdTurno { get; set; }
+        public long IdMoneda { get; set; }
         public decimal TotalEfectivo { get; set; }
         public decimal TotalTransferencias { get; set; }
     }

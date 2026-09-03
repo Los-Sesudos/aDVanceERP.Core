@@ -62,6 +62,11 @@ namespace aDVanceERP.Core.Modelos.Modulos.Inventario {
         public decimal PrecioVentaBase { get; set; }
         public bool Activo { get; set; } = true;
 
+        /// <summary>
+        /// Moneda en la que vive el precio de este producto. Null = moneda base del sistema.
+        /// </summary>
+        public long? IdMonedaReferencia { get; set; } = null;
+
         public decimal ObtenerCostoUnitario() {
             return Categoria == CategoriaProductoEnum.ProductoTerminado
                     ? CostoProduccionUnitario
