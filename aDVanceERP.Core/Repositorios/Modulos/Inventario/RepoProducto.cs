@@ -118,7 +118,37 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
 
         protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> parametros) {
             var consulta = $"""
-                DELETE FROM adv__inventario
+            DELETE FROM adv__detalle_pedido_producto
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__detalle_solicitud_compra
+            WHERE id_producto = @id;            
+
+            DELETE FROM adv__detalle_compra_producto
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__detalle_venta_producto
+            WHERE id_producto = @id;
+
+            DELETE FROm adv__servicio_orden_detalle
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__servicio_presupuesto_detalle
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__movimiento
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__inventario
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__auditoria_inventario
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__detalle_auditoria
+            WHERE id_producto = @id;
+
+            DELETE FROM adv__precio_presentacion
             WHERE id_producto = @id;
 
             DELETE FROM adv__producto 
