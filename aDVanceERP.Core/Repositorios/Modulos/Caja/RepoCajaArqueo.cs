@@ -2,6 +2,7 @@
 using aDVanceERP.Core.Modelos.Comun.Interfaces;
 using aDVanceERP.Core.Modelos.Modulos.Caja;
 using aDVanceERP.Core.Repositorios.BD;
+using aDVanceERP.Core.Repositorios.Modulos.Monedas;
 
 using MySql.Data.MySqlClient;
 
@@ -108,8 +109,6 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
         public static RepoCajaArqueo Instancia { get; } = new RepoCajaArqueo();
 
-        // ── Operaciones específicas ───────────────────────────────
-
         /// <summary>
         /// Reemplaza todas las filas de arqueo de un turno en una sola transacción.
         /// El presentador llama a esto cuando el cajero confirma el conteo completo.
@@ -121,8 +120,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 """;
 
             var consultaInsertar = """
-                INSERT INTO adv__caja_arqueo (id_turno, denominacion, cantidad)
-                VALUES (@id_turno, @denominacion, @cantidad);
+                INSERT INTO adv__caja_arqueo (id_turno, denominacion, cantidad, id_moneda)
+                VALUES (@id_turno, @denominacion, @cantidad, @id_moneda, @tasa_cambio);
                 """;
 
             using var conexion = ContextoBaseDatos.ObtenerConexionOptimizada();
@@ -130,11 +129,17 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
             using var transaccion = conexion.BeginTransaction();
 
+            var turno = RepoCajaTurno.Instancia.ObtenerPorId(idTurno)!;
+            var idMonedaBase = RepoMoneda.Instancia.ObtenerMonedaBase().Id;
+            var repoTasaCambio = RepoTasaCambio.Instancia;
+
             try {
                 // 1. Limpiar arqueo anterior del turno
                 ContextoBaseDatos.EjecutarComandoNoQuery(
                     consultaEliminar,
-                    new Dictionary<string, object> { { "@id_turno", idTurno } },
+                    new Dictionary<string, object> { 
+                        { "@id_turno", idTurno } 
+                    },
                     conexion);
 
                 // 2. Insertar las denominaciones nuevas (solo las que tienen cantidad > 0)
@@ -144,7 +149,9 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                         new Dictionary<string, object> {
                             { "@id_turno",     idTurno },
                             { "@denominacion", den.Denominacion },
-                            { "@cantidad",     den.Cantidad }
+                            { "@cantidad",     den.Cantidad },
+                            { "@id_moneda" ,   den.IdMoneda},
+                            { "@tasa_cambio",  repoTasaCambio.ObtenerTasaVigente(den.IdMoneda, idMonedaBase, turno.FechaApertura)}
                         },
                         conexion);
                 }

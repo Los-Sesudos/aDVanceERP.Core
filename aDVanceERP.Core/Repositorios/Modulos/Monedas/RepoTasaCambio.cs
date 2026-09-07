@@ -120,6 +120,14 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
         /// Devuelve 1 si no existe ninguna tasa (monedas iguales o sin datos).
         /// </summary>
         public decimal ObtenerTasaVigente(long idMonedaOrigen, long idMonedaDestino) {
+            return ObtenerTasaVigente(idMonedaOrigen, idMonedaDestino, DateTime.Today);
+        }
+
+        /// <summary>
+        /// Obtiene la tasa vigente más reciente (≤ hoy) para el par origen → destino.
+        /// Devuelve 1 si no existe ninguna tasa (monedas iguales o sin datos).
+        /// </summary>
+        public decimal ObtenerTasaVigente(long idMonedaOrigen, long idMonedaDestino, DateTime fecha) {
             if (idMonedaOrigen == idMonedaDestino)
                 return 1m;
 
@@ -128,14 +136,15 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
                 FROM adv__tasa_cambio
                 WHERE id_moneda_origen  = @origen
                   AND id_moneda_destino = @destino
-                  AND fecha <= CURDATE()
+                  AND fecha <= DATE(@fecha)
                 ORDER BY fecha DESC
                 LIMIT 1;
                 """;
 
             var parametros = new Dictionary<string, object> {
                 { "@origen",  idMonedaOrigen  },
-                { "@destino", idMonedaDestino }
+                { "@destino", idMonedaDestino },
+                { "@fecha", fecha }
             };
 
             var resultado = ContextoBaseDatos.EjecutarConsultaEscalar<object>(consulta, parametros);

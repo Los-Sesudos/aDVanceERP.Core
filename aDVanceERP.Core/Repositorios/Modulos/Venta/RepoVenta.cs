@@ -180,6 +180,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Venta {
                 _ => consultaComun
             };
 
+            consulta += "\nORDER BY v.fecha DESC;";
+
             parametros = filtroBusqueda switch {
                 FiltroBusquedaVenta.Id => new Dictionary<string, object> {
                     { "@id_venta", Convert.ToInt64(string.IsNullOrEmpty(criterio) ? "0" : criterio) },

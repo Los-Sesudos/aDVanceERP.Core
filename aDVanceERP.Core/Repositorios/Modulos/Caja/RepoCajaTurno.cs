@@ -14,8 +14,6 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
         public RepoCajaTurno() : base("adv__caja_turno", "id_turno") { }
 
-        // ── CRUD base ─────────────────────────────────────────────
-
         protected override string GenerarComandoAdicionar(
                 CajaTurno entidad,
                 out Dictionary<string, object> parametros,
@@ -145,8 +143,10 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     {consultaBase}
                     AND t.estado = @estado
                     """,
-                _ => $"{consultaBase} ORDER BY t.fecha_apertura DESC"
+                _ => $"{consultaBase}"
             };
+
+            consulta += "\nORDER BY t.fecha_apertura DESC;";
 
             parametros = filtroBusqueda switch {
                 FiltroBusquedaCajaTurno.Id => new Dictionary<string, object> {
