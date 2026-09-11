@@ -275,23 +275,20 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         /// Genera el código único del turno con formato TRN-YYYYMMDD-XXXX.
         /// Obtiene el número correlativo desde la BD para evitar colisiones.
         /// </summary>
-        public string GenerarCodigoTurno(long idAlmacen) {
-            var fechaHoy = DateTime.Today.ToString("yyyyMMdd");
-
+        public int ObtenerCorrelativoTurno(long idAlmacen, DateTime? fecha = null) {
             var consulta = """
                 SELECT COUNT(*) + 1
                 FROM adv__caja_turno
-                WHERE DATE(fecha_apertura) = CURDATE()
+                WHERE DATE(fecha_apertura) = DATE(@fecha)
                   AND id_almacen = @id_almacen;
                 """;
 
             var parametros = new Dictionary<string, object> {
-                { "@id_almacen", idAlmacen }
+                { "@id_almacen", idAlmacen },
+                { "@fecha", fecha ?? DateTime.Today }
             };
 
-            var correlativo = ContextoBaseDatos.EjecutarConsultaEscalar<int>(consulta, parametros);
-
-            return $"TRN-{fechaHoy}-{idAlmacen:D2}{correlativo:D2}";
+            return ContextoBaseDatos.EjecutarConsultaEscalar<int>(consulta, parametros);
         }
 
         /// <summary>

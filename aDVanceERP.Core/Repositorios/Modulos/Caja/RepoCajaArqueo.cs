@@ -36,7 +36,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     @denominacion,
                     @cantidad,
                     @id_moneda, 
-                    @tasa_cambio_aplicada, 
+                    @tasa_cambio_aplicada
                 )
                 ON DUPLICATE KEY UPDATE cantidad = VALUES(cantidad);
                 """;
@@ -147,7 +147,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     @denominacion,
                     @cantidad,
                     @id_moneda, 
-                    @tasa_cambio_aplicada, 
+                    @tasa_cambio_aplicada
                 );
                 """;
 

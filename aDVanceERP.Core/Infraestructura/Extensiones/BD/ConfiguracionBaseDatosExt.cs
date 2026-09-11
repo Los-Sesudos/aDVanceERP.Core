@@ -31,6 +31,8 @@ namespace aDVanceERP.Core.Infraestructura.Extensiones.BD {
                 MinPoolSize = 10;
                 MaxPoolSize = 100;
                 Connection Timeout = 30;
+                Convert Zero Datetime = True;
+                Allow Zero Datetime = True;
                 """;
         }
     }

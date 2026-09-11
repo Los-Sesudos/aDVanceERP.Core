@@ -181,7 +181,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
             var parametros = new Dictionary<string, object> {
                 { "@origen",  idMonedaOrigen  },
                 { "@destino", idMonedaDestino },
-                { "@fecha",   fecha.Date }
+                { "@fecha",   fecha }
             };
 
             var resultado = ContextoBaseDatos.EjecutarConsultaEscalar<object>(consulta, parametros);

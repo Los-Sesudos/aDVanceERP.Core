@@ -86,9 +86,12 @@ namespace aDVanceERP.Core.Infraestructura.Globales {
             if (conexionLocal)
                 CerrarConexion(comando.Connection);
 
-            return resultado == null || resultado == DBNull.Value
-                ? default
-                : (T)Convert.ChangeType(resultado, typeof(T));
+            if (resultado == null || resultado == DBNull.Value)
+                return default;
+
+            var tipoDestino = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+
+            return (T) Convert.ChangeType(resultado, tipoDestino);
         }
 
         public static int EjecutarComandoNoQuery(string consulta, Dictionary<string, object>? parametros, MySqlConnection? conexion = null, MySqlTransaction? transaccion = null) {

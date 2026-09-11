@@ -24,8 +24,14 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
             var idMonedaBase = RepoMoneda.Instancia.ObtenerMonedaBase().Id;
 
             var fechaCierre = ContextoBaseDatos.EjecutarConsultaEscalar<DateTime?>(
-                "SELECT fecha_cierre FROM adv__caja_turno WHERE id_turno = @id_turno;",
-                new Dictionary<string, object> { { "@id_turno", idTurno } }) ?? DateTime.Now;
+                """
+                SELECT fecha_cierre 
+                FROM adv__caja_turno 
+                WHERE id_turno = @id_turno;
+                """,
+                new Dictionary<string, object> { 
+                    { "@id_turno", idTurno } 
+                }) ?? DateTime.Now;
 
             using var conexion = new MySqlConnection(ContextoBaseDatos.Configuracion.ToStringConexion());
             conexion.Open();
@@ -78,12 +84,39 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 { "@monto_calculado", o.MontoCalculado }, { "@monto_declarado", o.MontoDeclarado },
                 { "@tasa_cambio_aplicada", o.TasaCambioAplicada }
             };
-            return "INSERT INTO adv__caja_conciliacion_moneda (id_turno, id_moneda, canal_pago, monto_calculado, monto_declarado, tasa_cambio_aplicada) VALUES (@id_turno, @id_moneda, @canal_pago, @monto_calculado, @monto_declarado, @tasa_cambio_aplicada);";
+            return """
+                INSERT INTO adv__caja_conciliacion_moneda (
+                    id_turno, 
+                    id_moneda, 
+                    canal_pago, 
+                    monto_calculado, 
+                    monto_declarado, 
+                    tasa_cambio_aplicada
+                ) VALUES (
+                    @id_turno, 
+                    @id_moneda, 
+                    @canal_pago, 
+                    @monto_calculado, 
+                    @monto_declarado, 
+                    @tasa_cambio_aplicada
+                    );
+                """;
         }
 
-        protected override string GenerarComandoEditar(CajaConciliacionMoneda o, out Dictionary<string, object> p, params IEntidadBaseDatos[] extra) {
-            p = new() { { "@id", o.Id }, { "@monto_calculado", o.MontoCalculado }, { "@monto_declarado", o.MontoDeclarado } };
-            return "UPDATE adv__caja_conciliacion_moneda SET monto_calculado = @monto_calculado, monto_declarado = @monto_declarado WHERE id_conciliacion = @id;";
+        protected override string GenerarComandoEditar(CajaConciliacionMoneda entidad, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] extra) {
+            parametros = new() {
+                { "@id", entidad.Id },
+                { "@monto_calculado", entidad.MontoCalculado },
+                { "@monto_declarado", entidad.MontoDeclarado }
+            };
+
+            return """
+                UPDATE adv__caja_conciliacion_moneda 
+                SET 
+                    monto_calculado = @monto_calculado, 
+                    monto_declarado = @monto_declarado 
+                WHERE id_conciliacion = @id;                
+                """;
         }
 
         protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> p) {

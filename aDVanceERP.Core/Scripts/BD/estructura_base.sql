@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 07-06-2026 a las 20:23:12
+-- Tiempo de generación: 11-09-2026 a las 06:18:04
 -- Versión del servidor: 8.4.7
 -- Versión de PHP: 8.3.28
 
@@ -89,20 +89,29 @@ CREATE TABLE IF NOT EXISTS `adv__caja_arqueo` (
   `id_moneda` int NOT NULL DEFAULT '1',
   `tasa_cambio_aplicada` decimal(18,6) NOT NULL DEFAULT '1.000000',
   PRIMARY KEY (`id_arqueo`),
-  UNIQUE KEY `uq_arqueo_turno_den` (`id_turno`,`denominacion`),
+  UNIQUE KEY `uq_arqueo_turno_moneda_den` (`id_turno`,`id_moneda`,`denominacion`),
   KEY `idx_arqueo_turno` (`id_turno`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- Migración: soporte multimoneda para adv__caja_arqueo
--- La columna id_moneda ya existe (default 1 = CUP), pero la llave única
--- actual (id_turno, denominacion) no distingue entre monedas.
--- Sin este cambio, dos denominaciones iguales en monedas distintas
--- (ej. un billete "5" en USD y otro "5" en EUR) colisionarían en el
--- INSERT ... ON DUPLICATE KEY UPDATE de RepoCajaArqueo.
+-- --------------------------------------------------------
 
-ALTER TABLE adv__caja_arqueo
-    DROP INDEX uq_arqueo_turno_den,
-    ADD UNIQUE KEY uq_arqueo_turno_moneda_den (id_turno, id_moneda, denominacion);
+--
+-- Estructura de tabla para la tabla `adv__caja_conciliacion_moneda`
+--
+
+DROP TABLE IF EXISTS `adv__caja_conciliacion_moneda`;
+CREATE TABLE IF NOT EXISTS `adv__caja_conciliacion_moneda` (
+  `id_conciliacion` bigint NOT NULL AUTO_INCREMENT,
+  `id_turno` bigint NOT NULL,
+  `id_moneda` bigint NOT NULL,
+  `canal_pago` enum('Efectivo','TransferenciaBancaria') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `monto_calculado` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `monto_declarado` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `diferencia` decimal(14,2) GENERATED ALWAYS AS ((`monto_declarado` - `monto_calculado`)) STORED,
+  `tasa_cambio_aplicada` decimal(18,6) NOT NULL DEFAULT '1.000000',
+  PRIMARY KEY (`id_conciliacion`),
+  UNIQUE KEY `uk_turno_moneda_canal` (`id_turno`,`id_moneda`,`canal_pago`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -272,6 +281,20 @@ CREATE TABLE IF NOT EXISTS `adv__cuenta_usuario` (
 -- --------------------------------------------------------
 
 --
+-- Estructura de tabla para la tabla `adv__denominacion_moneda`
+--
+
+DROP TABLE IF EXISTS `adv__denominacion_moneda`;
+CREATE TABLE IF NOT EXISTS `adv__denominacion_moneda` (
+  `id_denominacion_moneda` int NOT NULL AUTO_INCREMENT,
+  `id_moneda` int NOT NULL,
+  `valor` decimal(10,0) NOT NULL,
+  PRIMARY KEY (`id_denominacion_moneda`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estructura de tabla para la tabla `adv__detalle_auditoria`
 --
 
@@ -431,9 +454,7 @@ CREATE TABLE IF NOT EXISTS `adv__empleado` (
   `departamento` varchar(255) DEFAULT NULL,
   `salario` decimal(10,2) DEFAULT NULL,
   `activo` tinyint(1) NOT NULL DEFAULT '1',
-  PRIMARY KEY (`id_empleado`),
-  UNIQUE KEY `uk_codigo_empleado` (`codigo_empleado`),
-  KEY `fk_empleado_persona_idx` (`id_persona`)
+  PRIMARY KEY (`id_empleado`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -482,128 +503,120 @@ CREATE TABLE IF NOT EXISTS `adv__inventario` (
 DROP TRIGGER IF EXISTS `trg_auditoria_inventario_after_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_auditoria_inventario_after_insert` AFTER INSERT ON `adv__inventario` FOR EACH ROW BEGIN
-    DECLARE v_id_movimiento       INT     DEFAULT NULL;
-    DECLARE v_id_tipo_movimiento  INT     DEFAULT NULL;
-    DECLARE v_id_cuenta_usuario   INT     DEFAULT NULL;
-    DECLARE v_origen              VARCHAR(20) DEFAULT 'Trigger';
-    DECLARE v_observacion         TEXT    DEFAULT 'Inserción inicial detectada automáticamente';
-
-    IF NEW.cantidad > 0 THEN
-        SELECT
-            id_movimiento,
-            id_tipo_movimiento,
-            id_cuenta_usuario
-        INTO
-            v_id_movimiento,
-            v_id_tipo_movimiento,
-            v_id_cuenta_usuario
-        FROM adv__movimiento
-        WHERE id_producto = NEW.id_producto
-          AND id_almacen_destino = NEW.id_almacen
-          AND estado IN ('Pendiente', 'Completado')
-          AND fecha_creacion >= NOW() - INTERVAL 10 SECOND
-        ORDER BY fecha_creacion DESC
-        LIMIT 1;
-
-        SET v_origen = CASE v_id_tipo_movimiento
-            WHEN 1  THEN 'Movimiento'
-            WHEN 11 THEN 'Carga_Inicial'
-            WHEN 7  THEN 'Movimiento'
-            ELSE         'Carga_Inicial'
-        END;
-
-        SET v_observacion = CASE v_id_tipo_movimiento
-            WHEN 1  THEN 'Primera entrada por compra en este almacén'
-            WHEN 11 THEN 'Carga inicial de inventario'
-            WHEN 7  THEN 'Primera entrada de producción en este almacén'
-            ELSE        'Carga inicial detectada (sin movimiento correlacionado)'
-        END;
-
-        INSERT INTO `adv__auditoria_inventario` (
-            id_inventario, id_producto, id_almacen,
-            cantidad_anterior, costo_prom_anterior, valor_total_anterior,
-            cantidad_nueva, costo_prom_nuevo, valor_total_nuevo,
-            id_movimiento_ref, id_cuenta_usuario, origen, observacion
-        ) VALUES (
-            NEW.id_inventario, NEW.id_producto, NEW.id_almacen,
-            0, 0, 0,
-            NEW.cantidad, NEW.costo_promedio, NEW.valor_total,
-            v_id_movimiento, v_id_cuenta_usuario, v_origen, v_observacion
-        );
-    END IF;
+DECLARE v_id_movimiento       INT     DEFAULT NULL;
+DECLARE v_id_tipo_movimiento  INT     DEFAULT NULL;
+DECLARE v_id_cuenta_usuario   INT     DEFAULT NULL;
+DECLARE v_origen              VARCHAR(20) DEFAULT 'Trigger';
+DECLARE v_observacion         TEXT    DEFAULT 'Inserción inicial detectada automáticamente';
+IF NEW.cantidad > 0 THEN
+SELECT
+id_movimiento,
+id_tipo_movimiento,
+id_cuenta_usuario
+INTO
+v_id_movimiento,
+v_id_tipo_movimiento,
+v_id_cuenta_usuario
+FROM adv__movimiento
+WHERE id_producto = NEW.id_producto
+AND id_almacen_destino = NEW.id_almacen
+AND estado IN ('Pendiente', 'Completado')
+AND fecha_creacion >= NOW() - INTERVAL 10 SECOND
+ORDER BY fecha_creacion DESC
+LIMIT 1;
+SET v_origen = CASE v_id_tipo_movimiento
+WHEN 1  THEN 'Movimiento'
+WHEN 11 THEN 'Carga_Inicial'
+WHEN 7  THEN 'Movimiento'
+ELSE         'Carga_Inicial'
+END;
+SET v_observacion = CASE v_id_tipo_movimiento
+WHEN 1  THEN 'Primera entrada por compra en este almacén'
+WHEN 11 THEN 'Carga inicial de inventario'
+WHEN 7  THEN 'Primera entrada de producción en este almacén'
+ELSE        'Carga inicial detectada (sin movimiento correlacionado)'
+END;
+INSERT INTO `adv__auditoria_inventario` (
+id_inventario, id_producto, id_almacen,
+cantidad_anterior, costo_prom_anterior, valor_total_anterior,
+cantidad_nueva, costo_prom_nuevo, valor_total_nuevo,
+id_movimiento_ref, id_cuenta_usuario, origen, observacion
+) VALUES (
+NEW.id_inventario, NEW.id_producto, NEW.id_almacen,
+0, 0, 0,
+NEW.cantidad, NEW.costo_promedio, NEW.valor_total,
+v_id_movimiento, v_id_cuenta_usuario, v_origen, v_observacion
+);
+END IF;
 END
 $$
 DELIMITER ;
 DROP TRIGGER IF EXISTS `trg_auditoria_inventario_after_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_auditoria_inventario_after_update` AFTER UPDATE ON `adv__inventario` FOR EACH ROW BEGIN
-    DECLARE v_id_movimiento       INT     DEFAULT NULL;
-    DECLARE v_id_tipo_movimiento  INT     DEFAULT NULL;
-    DECLARE v_id_cuenta_usuario   INT     DEFAULT NULL;
-    DECLARE v_origen              VARCHAR(20) DEFAULT 'Trigger';
-    DECLARE v_observacion         TEXT    DEFAULT 'Cambio detectado automáticamente por trigger';
-
-    IF (OLD.cantidad <> NEW.cantidad OR OLD.costo_promedio <> NEW.costo_promedio) THEN
-        SELECT
-            id_movimiento,
-            id_tipo_movimiento,
-            id_cuenta_usuario
-        INTO
-            v_id_movimiento,
-            v_id_tipo_movimiento,
-            v_id_cuenta_usuario
-        FROM adv__movimiento
-        WHERE id_producto = NEW.id_producto
-          AND (id_almacen_destino = NEW.id_almacen OR id_almacen_origen = NEW.id_almacen)
-          AND estado IN ('Pendiente', 'Completado')
-          AND fecha_creacion >= NOW() - INTERVAL 10 SECOND
-        ORDER BY fecha_creacion DESC
-        LIMIT 1;
-
-        SET v_origen = CASE v_id_tipo_movimiento
-            WHEN 1  THEN 'Movimiento'
-            WHEN 2  THEN 'Movimiento'
-            WHEN 3  THEN 'Movimiento'
-            WHEN 4  THEN 'Movimiento'
-            WHEN 5  THEN 'AjusteManual'
-            WHEN 6  THEN 'AjusteManual'
-            WHEN 7  THEN 'Movimiento'
-            WHEN 8  THEN 'Movimiento'
-            WHEN 9  THEN 'Movimiento'
-            WHEN 10 THEN 'Movimiento'
-            WHEN 11 THEN 'Carga_Inicial'
-            WHEN 12 THEN 'Movimiento'
-            ELSE         'Trigger'
-        END;
-
-        SET v_observacion = CASE v_id_tipo_movimiento
-            WHEN 1  THEN 'Entrada por compra'
-            WHEN 2  THEN 'Salida por venta'
-            WHEN 3  THEN 'Entrada por devolución de venta'
-            WHEN 4  THEN 'Salida por devolución a proveedor'
-            WHEN 5  THEN 'Ajuste manual positivo'
-            WHEN 6  THEN 'Ajuste manual negativo'
-            WHEN 7  THEN 'Entrada de producción'
-            WHEN 8  THEN 'Salida a producción'
-            WHEN 9  THEN 'Consumo interno'
-            WHEN 10 THEN 'Merma o pérdida registrada'
-            WHEN 11 THEN 'Carga inicial de inventario (actualización)'
-            WHEN 12 THEN 'Traslado entre almacenes'
-            ELSE        'Cambio detectado por trigger sin movimiento correlacionado'
-        END;
-
-        INSERT INTO `adv__auditoria_inventario` (
-            id_inventario, id_producto, id_almacen,
-            cantidad_anterior, costo_prom_anterior, valor_total_anterior,
-            cantidad_nueva, costo_prom_nuevo, valor_total_nuevo,
-            id_movimiento_ref, id_cuenta_usuario, origen, observacion
-        ) VALUES (
-            OLD.id_inventario, OLD.id_producto, OLD.id_almacen,
-            OLD.cantidad, OLD.costo_promedio, OLD.valor_total,
-            NEW.cantidad, NEW.costo_promedio, NEW.valor_total,
-            v_id_movimiento, v_id_cuenta_usuario, v_origen, v_observacion
-        );
-    END IF;
+DECLARE v_id_movimiento       INT     DEFAULT NULL;
+DECLARE v_id_tipo_movimiento  INT     DEFAULT NULL;
+DECLARE v_id_cuenta_usuario   INT     DEFAULT NULL;
+DECLARE v_origen              VARCHAR(20) DEFAULT 'Trigger';
+DECLARE v_observacion         TEXT    DEFAULT 'Cambio detectado automáticamente por trigger';
+IF (OLD.cantidad <> NEW.cantidad OR OLD.costo_promedio <> NEW.costo_promedio) THEN
+SELECT
+id_movimiento,
+id_tipo_movimiento,
+id_cuenta_usuario
+INTO
+v_id_movimiento,
+v_id_tipo_movimiento,
+v_id_cuenta_usuario
+FROM adv__movimiento
+WHERE id_producto = NEW.id_producto
+AND (id_almacen_destino = NEW.id_almacen OR id_almacen_origen = NEW.id_almacen)
+AND estado IN ('Pendiente', 'Completado')
+AND fecha_creacion >= NOW() - INTERVAL 10 SECOND
+ORDER BY fecha_creacion DESC
+LIMIT 1;
+SET v_origen = CASE v_id_tipo_movimiento
+WHEN 1  THEN 'Movimiento'
+WHEN 2  THEN 'Movimiento'
+WHEN 3  THEN 'Movimiento'
+WHEN 4  THEN 'Movimiento'
+WHEN 5  THEN 'AjusteManual'
+WHEN 6  THEN 'AjusteManual'
+WHEN 7  THEN 'Movimiento'
+WHEN 8  THEN 'Movimiento'
+WHEN 9  THEN 'Movimiento'
+WHEN 10 THEN 'Movimiento'
+WHEN 11 THEN 'Carga_Inicial'
+WHEN 12 THEN 'Movimiento'
+ELSE         'Trigger'
+END;
+SET v_observacion = CASE v_id_tipo_movimiento
+WHEN 1  THEN 'Entrada por compra'
+WHEN 2  THEN 'Salida por venta'
+WHEN 3  THEN 'Entrada por devolución de venta'
+WHEN 4  THEN 'Salida por devolución a proveedor'
+WHEN 5  THEN 'Ajuste manual positivo'
+WHEN 6  THEN 'Ajuste manual negativo'
+WHEN 7  THEN 'Entrada de producción'
+WHEN 8  THEN 'Salida a producción'
+WHEN 9  THEN 'Consumo interno'
+WHEN 10 THEN 'Merma o pérdida registrada'
+WHEN 11 THEN 'Carga inicial de inventario (actualización)'
+WHEN 12 THEN 'Traslado entre almacenes'
+ELSE        'Cambio detectado por trigger sin movimiento correlacionado'
+END;
+INSERT INTO `adv__auditoria_inventario` (
+id_inventario, id_producto, id_almacen,
+cantidad_anterior, costo_prom_anterior, valor_total_anterior,
+cantidad_nueva, costo_prom_nuevo, valor_total_nuevo,
+id_movimiento_ref, id_cuenta_usuario, origen, observacion
+) VALUES (
+OLD.id_inventario, OLD.id_producto, OLD.id_almacen,
+OLD.cantidad, OLD.costo_promedio, OLD.valor_total,
+NEW.cantidad, NEW.costo_promedio, NEW.valor_total,
+v_id_movimiento, v_id_cuenta_usuario, v_origen, v_observacion
+);
+END IF;
 END
 $$
 DELIMITER ;
@@ -768,8 +781,7 @@ CREATE TABLE IF NOT EXISTS `adv__persona` (
   `direccion_principal` varchar(500) DEFAULT NULL,
   `fecha_registro` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `activo` tinyint(1) NOT NULL DEFAULT '1',
-  PRIMARY KEY (`id_persona`),
-  UNIQUE KEY `uk_numero_documento` (`tipo_documento`,`numero_documento`)
+  PRIMARY KEY (`id_persona`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1080,87 +1092,87 @@ CREATE TABLE IF NOT EXISTS `adv__servicio_orden_detalle` (
 DROP TRIGGER IF EXISTS `trg_servicio_orden_detalle_after_delete`;
 DELIMITER $$
 CREATE TRIGGER `trg_servicio_orden_detalle_after_delete` AFTER DELETE ON `adv__servicio_orden_detalle` FOR EACH ROW BEGIN
-    UPDATE adv__servicio_orden so
-    SET 
-        so.subtotal = (
-            SELECT COALESCE(SUM(subtotal), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = OLD.id_servicio_orden
-        ),
-        so.descuento_total = (
-            SELECT COALESCE(SUM(descuento_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = OLD.id_servicio_orden
-        ),
-        so.impuesto_total = (
-            SELECT COALESCE(SUM(impuesto_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = OLD.id_servicio_orden
-        ),
-        so.importe_total = (
-            SELECT COALESCE(SUM(total_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = OLD.id_servicio_orden
-        )
-    WHERE so.id_servicio_orden = OLD.id_servicio_orden;
+UPDATE adv__servicio_orden so
+SET
+so.subtotal = (
+SELECT COALESCE(SUM(subtotal), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = OLD.id_servicio_orden
+),
+so.descuento_total = (
+SELECT COALESCE(SUM(descuento_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = OLD.id_servicio_orden
+),
+so.impuesto_total = (
+SELECT COALESCE(SUM(impuesto_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = OLD.id_servicio_orden
+),
+so.importe_total = (
+SELECT COALESCE(SUM(total_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = OLD.id_servicio_orden
+)
+WHERE so.id_servicio_orden = OLD.id_servicio_orden;
 END
 $$
 DELIMITER ;
 DROP TRIGGER IF EXISTS `trg_servicio_orden_detalle_after_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_servicio_orden_detalle_after_insert` AFTER INSERT ON `adv__servicio_orden_detalle` FOR EACH ROW BEGIN
-    UPDATE adv__servicio_orden so
-    SET 
-        so.subtotal = (
-            SELECT COALESCE(SUM(subtotal), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        ),
-        so.descuento_total = (
-            SELECT COALESCE(SUM(descuento_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        ),
-        so.impuesto_total = (
-            SELECT COALESCE(SUM(impuesto_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        ),
-        so.importe_total = (
-            SELECT COALESCE(SUM(total_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        )
-    WHERE so.id_servicio_orden = NEW.id_servicio_orden;
+UPDATE adv__servicio_orden so
+SET
+so.subtotal = (
+SELECT COALESCE(SUM(subtotal), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+),
+so.descuento_total = (
+SELECT COALESCE(SUM(descuento_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+),
+so.impuesto_total = (
+SELECT COALESCE(SUM(impuesto_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+),
+so.importe_total = (
+SELECT COALESCE(SUM(total_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+)
+WHERE so.id_servicio_orden = NEW.id_servicio_orden;
 END
 $$
 DELIMITER ;
 DROP TRIGGER IF EXISTS `trg_servicio_orden_detalle_after_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_servicio_orden_detalle_after_update` AFTER UPDATE ON `adv__servicio_orden_detalle` FOR EACH ROW BEGIN
-    UPDATE adv__servicio_orden so
-    SET 
-        so.subtotal = (
-            SELECT COALESCE(SUM(subtotal), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        ),
-        so.descuento_total = (
-            SELECT COALESCE(SUM(descuento_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        ),
-        so.impuesto_total = (
-            SELECT COALESCE(SUM(impuesto_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        ),
-        so.importe_total = (
-            SELECT COALESCE(SUM(total_item), 0)
-            FROM adv__servicio_orden_detalle
-            WHERE id_servicio_orden = NEW.id_servicio_orden
-        )
-    WHERE so.id_servicio_orden = NEW.id_servicio_orden;
+UPDATE adv__servicio_orden so
+SET
+so.subtotal = (
+SELECT COALESCE(SUM(subtotal), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+),
+so.descuento_total = (
+SELECT COALESCE(SUM(descuento_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+),
+so.impuesto_total = (
+SELECT COALESCE(SUM(impuesto_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+),
+so.importe_total = (
+SELECT COALESCE(SUM(total_item), 0)
+FROM adv__servicio_orden_detalle
+WHERE id_servicio_orden = NEW.id_servicio_orden
+)
+WHERE so.id_servicio_orden = NEW.id_servicio_orden;
 END
 $$
 DELIMITER ;
@@ -1234,87 +1246,87 @@ CREATE TABLE IF NOT EXISTS `adv__servicio_presupuesto_detalle` (
 DROP TRIGGER IF EXISTS `trg_servicio_presupuesto_detalle_after_delete`;
 DELIMITER $$
 CREATE TRIGGER `trg_servicio_presupuesto_detalle_after_delete` AFTER DELETE ON `adv__servicio_presupuesto_detalle` FOR EACH ROW BEGIN
-    UPDATE adv__servicio_presupuesto sp
-    SET 
-        sp.subtotal = (
-            SELECT COALESCE(SUM(subtotal), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
-        ),
-        sp.descuento_total = (
-            SELECT COALESCE(SUM(descuento_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
-        ),
-        sp.impuesto_total = (
-            SELECT COALESCE(SUM(impuesto_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
-        ),
-        sp.importe_total = (
-            SELECT COALESCE(SUM(total_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
-        )
-    WHERE sp.id_servicio_presupuesto = OLD.id_servicio_presupuesto;
+UPDATE adv__servicio_presupuesto sp
+SET
+sp.subtotal = (
+SELECT COALESCE(SUM(subtotal), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
+),
+sp.descuento_total = (
+SELECT COALESCE(SUM(descuento_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
+),
+sp.impuesto_total = (
+SELECT COALESCE(SUM(impuesto_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
+),
+sp.importe_total = (
+SELECT COALESCE(SUM(total_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = OLD.id_servicio_presupuesto
+)
+WHERE sp.id_servicio_presupuesto = OLD.id_servicio_presupuesto;
 END
 $$
 DELIMITER ;
 DROP TRIGGER IF EXISTS `trg_servicio_presupuesto_detalle_after_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_servicio_presupuesto_detalle_after_insert` AFTER INSERT ON `adv__servicio_presupuesto_detalle` FOR EACH ROW BEGIN
-    UPDATE adv__servicio_presupuesto sp
-    SET 
-        sp.subtotal = (
-            SELECT COALESCE(SUM(subtotal), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        ),
-        sp.descuento_total = (
-            SELECT COALESCE(SUM(descuento_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        ),
-        sp.impuesto_total = (
-            SELECT COALESCE(SUM(impuesto_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        ),
-        sp.importe_total = (
-            SELECT COALESCE(SUM(total_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        )
-    WHERE sp.id_servicio_presupuesto = NEW.id_servicio_presupuesto;
+UPDATE adv__servicio_presupuesto sp
+SET
+sp.subtotal = (
+SELECT COALESCE(SUM(subtotal), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+),
+sp.descuento_total = (
+SELECT COALESCE(SUM(descuento_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+),
+sp.impuesto_total = (
+SELECT COALESCE(SUM(impuesto_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+),
+sp.importe_total = (
+SELECT COALESCE(SUM(total_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+)
+WHERE sp.id_servicio_presupuesto = NEW.id_servicio_presupuesto;
 END
 $$
 DELIMITER ;
 DROP TRIGGER IF EXISTS `trg_servicio_presupuesto_detalle_after_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_servicio_presupuesto_detalle_after_update` AFTER UPDATE ON `adv__servicio_presupuesto_detalle` FOR EACH ROW BEGIN
-    UPDATE adv__servicio_presupuesto sp
-    SET 
-        sp.subtotal = (
-            SELECT COALESCE(SUM(subtotal), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        ),
-        sp.descuento_total = (
-            SELECT COALESCE(SUM(descuento_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        ),
-        sp.impuesto_total = (
-            SELECT COALESCE(SUM(impuesto_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        ),
-        sp.importe_total = (
-            SELECT COALESCE(SUM(total_item), 0)
-            FROM adv__servicio_presupuesto_detalle
-            WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
-        )
-    WHERE sp.id_servicio_presupuesto = NEW.id_servicio_presupuesto;
+UPDATE adv__servicio_presupuesto sp
+SET
+sp.subtotal = (
+SELECT COALESCE(SUM(subtotal), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+),
+sp.descuento_total = (
+SELECT COALESCE(SUM(descuento_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+),
+sp.impuesto_total = (
+SELECT COALESCE(SUM(impuesto_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+),
+sp.importe_total = (
+SELECT COALESCE(SUM(total_item), 0)
+FROM adv__servicio_presupuesto_detalle
+WHERE id_servicio_presupuesto = NEW.id_servicio_presupuesto
+)
+WHERE sp.id_servicio_presupuesto = NEW.id_servicio_presupuesto;
 END
 $$
 DELIMITER ;
@@ -1331,7 +1343,7 @@ CREATE TABLE IF NOT EXISTS `adv__servicio_tecnico_asignado` (
   `id_servicio_orden` int NOT NULL,
   `id_empleado` int NOT NULL,
   `id_cuenta_usuario_asigno` int NOT NULL,
-  `rol` enum('Principal','Secundario','Supervisor') COLLATE utf8mb4_unicode_ci DEFAULT 'Secundario',
+  `rol` enum('Principal','Secundario','Supervisor') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'Secundario',
   `horas_trabajadas` decimal(6,2) DEFAULT '0.00',
   `fecha_asignacion` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `fecha_desasignacion` datetime DEFAULT NULL,
@@ -1511,9 +1523,9 @@ CREATE TABLE IF NOT EXISTS `adv__unidad_medida` (
 DROP TABLE IF EXISTS `adv__venta`;
 CREATE TABLE IF NOT EXISTS `adv__venta` (
   `id_venta` int NOT NULL AUTO_INCREMENT,
-  `id_pedido` int DEFAULT 0,
-  `id_empleado` int NOT NULL DEFAULT 0,
-  `id_cliente` int DEFAULT 0,
+  `id_pedido` int DEFAULT NULL,
+  `id_empleado` int NOT NULL DEFAULT '0',
+  `id_cliente` int NOT NULL DEFAULT '0',
   `id_cuenta_usuario` int DEFAULT NULL,
   `id_almacen_origen` int DEFAULT NULL,
   `numero_factura_ticket` varchar(50) DEFAULT NULL,
@@ -1557,24 +1569,24 @@ CREATE TABLE IF NOT EXISTS `adv__version_esquema` (
 --
 DROP VIEW IF EXISTS `v_auditoria_inventario`;
 CREATE TABLE IF NOT EXISTS `v_auditoria_inventario` (
-`cantidad_anterior` decimal(10,2)
-,`cantidad_nueva` decimal(10,2)
+`id_auditoria` bigint
+,`fecha_registro` datetime
+,`id_producto` int
 ,`codigo_producto` varchar(100)
+,`id_almacen` int
+,`cantidad_anterior` decimal(10,2)
+,`cantidad_nueva` decimal(10,2)
+,`diferencia_cantidad` decimal(10,2)
 ,`costo_prom_anterior` decimal(12,4)
 ,`costo_prom_nuevo` decimal(12,4)
-,`diferencia_cantidad` decimal(10,2)
-,`diferencia_valor` decimal(12,4)
-,`fecha_registro` datetime
-,`id_almacen` int
-,`id_auditoria` bigint
-,`id_movimiento_ref` int
-,`id_producto` int
-,`observacion` text
-,`origen` enum('Movimiento','AjusteManual','Carga_Inicial','Sistema','Trigger')
-,`tipo_movimiento` varchar(50)
-,`usuario` varchar(100)
 ,`valor_total_anterior` decimal(12,4)
 ,`valor_total_nuevo` decimal(12,4)
+,`diferencia_valor` decimal(12,4)
+,`origen` enum('Movimiento','AjusteManual','Carga_Inicial','Sistema','Trigger')
+,`usuario` varchar(100)
+,`tipo_movimiento` varchar(50)
+,`id_movimiento_ref` int
+,`observacion` text
 );
 
 -- --------------------------------------------------------
@@ -1585,18 +1597,18 @@ CREATE TABLE IF NOT EXISTS `v_auditoria_inventario` (
 --
 DROP VIEW IF EXISTS `v_diferencias_pendientes`;
 CREATE TABLE IF NOT EXISTS `v_diferencias_pendientes` (
-`almacen` varchar(100)
-,`cantidad_contada` decimal(10,2)
-,`cantidad_sistema` decimal(10,2)
-,`codigo_producto` varchar(100)
-,`contado_por` varchar(100)
-,`diferencia` decimal(10,2)
-,`fecha_conteo` datetime
-,`id_detalle_auditoria` bigint
-,`observacion` text
-,`producto` varchar(255)
+`id_detalle_auditoria` bigint
 ,`sesion` varchar(150)
+,`producto` varchar(255)
+,`codigo_producto` varchar(100)
+,`almacen` varchar(100)
+,`cantidad_sistema` decimal(10,2)
+,`cantidad_contada` decimal(10,2)
+,`diferencia` decimal(10,2)
 ,`valor_diferencia` decimal(12,4)
+,`contado_por` varchar(100)
+,`fecha_conteo` datetime
+,`observacion` text
 );
 
 -- --------------------------------------------------------
@@ -1607,15 +1619,15 @@ CREATE TABLE IF NOT EXISTS `v_diferencias_pendientes` (
 --
 DROP VIEW IF EXISTS `v_kardex_valorizado`;
 CREATE TABLE IF NOT EXISTS `v_kardex_valorizado` (
-`almacen` varchar(100)
+`producto` varchar(255)
+,`almacen` varchar(100)
+,`fecha_registro` datetime
 ,`cantidad_anterior` decimal(10,2)
 ,`cantidad_nueva` decimal(10,2)
-,`costo_promedio` decimal(12,4)
-,`fecha_registro` datetime
 ,`movimiento` decimal(10,2)
-,`producto` varchar(255)
-,`saldo_valorizado` decimal(12,4)
 ,`tipo` varchar(7)
+,`costo_promedio` decimal(12,4)
+,`saldo_valorizado` decimal(12,4)
 );
 
 -- --------------------------------------------------------
@@ -1626,19 +1638,19 @@ CREATE TABLE IF NOT EXISTS `v_kardex_valorizado` (
 --
 DROP VIEW IF EXISTS `v_resumen_sesion_auditoria`;
 CREATE TABLE IF NOT EXISTS `v_resumen_sesion_auditoria` (
-`almacen` varchar(100)
-,`estado` enum('Abierta','En_Proceso','Cerrada','Anulada')
-,`fecha_cierre` datetime
-,`fecha_inicio` datetime
-,`id_sesion_auditoria` int
-,`impacto_economico_total` decimal(34,4)
-,`productos_exactos` decimal(23,0)
-,`productos_faltante` decimal(23,0)
-,`productos_sin_contar` decimal(23,0)
-,`productos_sobrante` decimal(23,0)
-,`responsable` varchar(100)
+`id_sesion_auditoria` int
 ,`sesion` varchar(150)
+,`almacen` varchar(100)
+,`responsable` varchar(100)
+,`fecha_inicio` datetime
+,`fecha_cierre` datetime
+,`estado` enum('Abierta','En_Proceso','Cerrada','Anulada')
 ,`total_productos` bigint
+,`productos_sobrante` decimal(23,0)
+,`productos_faltante` decimal(23,0)
+,`productos_exactos` decimal(23,0)
+,`productos_sin_contar` decimal(23,0)
+,`impacto_economico_total` decimal(34,4)
 );
 
 -- --------------------------------------------------------
@@ -1649,17 +1661,17 @@ CREATE TABLE IF NOT EXISTS `v_resumen_sesion_auditoria` (
 --
 DROP VIEW IF EXISTS `v_servicio_actividades_completas`;
 CREATE TABLE IF NOT EXISTS `v_servicio_actividades_completas` (
-`activo` tinyint(1)
+`id_servicio_actividad` int
 ,`codigo` varchar(50)
-,`descripcion` text
-,`id_servicio_actividad` int
-,`id_servicio_tipo` int
 ,`nombre` varchar(150)
+,`descripcion` text
 ,`precio_base` decimal(10,2)
-,`requiere_materiales` tinyint(1)
-,`tiempo_estimado_minutos` int
-,`tipo_servicio_nombre` varchar(100)
 ,`unidad_medida` varchar(50)
+,`tiempo_estimado_minutos` int
+,`requiere_materiales` tinyint(1)
+,`activo` tinyint(1)
+,`id_servicio_tipo` int
+,`tipo_servicio_nombre` varchar(100)
 );
 
 -- --------------------------------------------------------
@@ -1670,24 +1682,24 @@ CREATE TABLE IF NOT EXISTS `v_servicio_actividades_completas` (
 --
 DROP VIEW IF EXISTS `v_servicio_orden_resumen`;
 CREATE TABLE IF NOT EXISTS `v_servicio_orden_resumen` (
-`cantidad_actividades` decimal(23,0)
-,`cantidad_items` bigint
-,`cantidad_materiales` decimal(23,0)
-,`cliente_nombre` varchar(255)
+`id_servicio_orden` int
 ,`codigo` varchar(50)
-,`descuento_total` decimal(12,2)
-,`estado` enum('Pendiente','Programada','EnProgreso','EnPausa','Completada','Facturada','Anulada')
-,`fecha_creacion` datetime
-,`fecha_fin_programada` datetime
-,`fecha_inicio_programada` datetime
 ,`id_cliente` int
-,`id_servicio_orden` int
+,`cliente_nombre` varchar(255)
 ,`id_servicio_tipo` int
-,`importe_total` decimal(12,2)
-,`impuesto_total` decimal(12,2)
-,`prioridad` enum('Baja','Media','Alta','Urgente')
 ,`servicio_tipo_nombre` varchar(100)
+,`estado` enum('Pendiente','Programada','EnProgreso','EnPausa','Completada','Facturada','Anulada')
+,`prioridad` enum('Baja','Media','Alta','Urgente')
+,`fecha_creacion` datetime
+,`fecha_inicio_programada` datetime
+,`fecha_fin_programada` datetime
 ,`subtotal` decimal(12,2)
+,`descuento_total` decimal(12,2)
+,`impuesto_total` decimal(12,2)
+,`importe_total` decimal(12,2)
+,`cantidad_items` bigint
+,`cantidad_actividades` decimal(23,0)
+,`cantidad_materiales` decimal(23,0)
 );
 
 -- --------------------------------------------------------
@@ -1698,22 +1710,22 @@ CREATE TABLE IF NOT EXISTS `v_servicio_orden_resumen` (
 --
 DROP VIEW IF EXISTS `v_servicio_presupuesto_resumen`;
 CREATE TABLE IF NOT EXISTS `v_servicio_presupuesto_resumen` (
-`cantidad_items` bigint
-,`cliente_nombre` varchar(255)
+`id_servicio_presupuesto` int
 ,`codigo` varchar(50)
-,`descuento_total` decimal(12,2)
-,`dias_restantes` int
+,`id_cliente` int
+,`cliente_nombre` varchar(255)
+,`id_servicio_tipo` int
+,`servicio_tipo_nombre` varchar(100)
 ,`estado` enum('Borrador','Enviado','Aprobado','Rechazado','Expirado','Convertido')
-,`estado_actualizado` varchar(10)
 ,`fecha_emision` datetime
 ,`fecha_validez` datetime
-,`id_cliente` int
-,`id_servicio_presupuesto` int
-,`id_servicio_tipo` int
-,`importe_total` decimal(12,2)
-,`impuesto_total` decimal(12,2)
-,`servicio_tipo_nombre` varchar(100)
+,`estado_actualizado` varchar(10)
 ,`subtotal` decimal(12,2)
+,`descuento_total` decimal(12,2)
+,`impuesto_total` decimal(12,2)
+,`importe_total` decimal(12,2)
+,`cantidad_items` bigint
+,`dias_restantes` int
 );
 
 -- --------------------------------------------------------
@@ -1724,14 +1736,14 @@ CREATE TABLE IF NOT EXISTS `v_servicio_presupuesto_resumen` (
 --
 DROP VIEW IF EXISTS `v_usuario_login`;
 CREATE TABLE IF NOT EXISTS `v_usuario_login` (
-`administrador` tinyint(1)
-,`email` varchar(255)
-,`estado` tinyint(1)
-,`id_cuenta_usuario` int
-,`id_rol` int
+`id_cuenta_usuario` int
 ,`nombre` varchar(100)
 ,`password_hash` varchar(255)
 ,`password_salt` varchar(255)
+,`email` varchar(255)
+,`administrador` tinyint(1)
+,`estado` tinyint(1)
+,`id_rol` int
 ,`rol_nombre` varchar(50)
 );
 
