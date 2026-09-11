@@ -28,6 +28,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     id_moneda,
                     id_venta,
                     monto,
+                    monto_moneda_base,
+                    tasa_cambio_aplicada,
                     descripcion,
                     id_cuenta_usuario,
                     fecha_movimiento
@@ -38,22 +40,34 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     @id_moneda,
                     @id_venta,
                     @monto,
+                    @monto_moneda_base,
+                    @tasa_cambio_aplicada,
                     @descripcion,
                     @id_cuenta_usuario,
                     @fecha_movimiento
                 );
                 """;
 
+            // Se congela la tasa del día del movimiento — no la de hoy — para que un
+            // reporte histórico no cambie de valor si la tasa se actualiza después.
+            var idMonedaBase = RepoMoneda.Instancia.ObtenerMonedaBase().Id;
+            decimal tasaAplicada = entidad.IdMoneda == idMonedaBase
+                ? 1m
+                : RepoTasaCambio.Instancia.ObtenerTasaVigenteEfectivo(entidad.IdMoneda, idMonedaBase, entidad.FechaMovimiento);
+            decimal montoBase = entidad.Monto * tasaAplicada;
+
             parametros = new Dictionary<string, object> {
-                { "@id_turno",          entidad.IdTurno },
-                { "@tipo",              entidad.Tipo.ToString() },
-                { "@canal_pago",        entidad.CanalPago.ToString() },
-                { "@id_moneda",         entidad.IdMoneda },
-                { "@id_venta",          entidad.IdVenta.HasValue ? entidad.IdVenta.Value : (object)DBNull.Value },
-                { "@monto",             entidad.Monto },
-                { "@descripcion",       entidad.Descripcion ?? (object)DBNull.Value },
-                { "@id_cuenta_usuario", entidad.IdCuentaUsuario },
-                { "@fecha_movimiento",  entidad.FechaMovimiento.ToString("yyyy-MM-dd HH:mm:ss") }
+                { "@id_turno",             entidad.IdTurno },
+                { "@tipo",                 entidad.Tipo.ToString() },
+                { "@canal_pago",           entidad.CanalPago.ToString() },
+                { "@id_moneda",            entidad.IdMoneda },
+                { "@id_venta",             entidad.IdVenta.HasValue ? entidad.IdVenta.Value : (object)DBNull.Value },
+                { "@monto",                entidad.Monto },
+                { "@monto_moneda_base",    montoBase },
+                { "@tasa_cambio_aplicada", tasaAplicada },
+                { "@descripcion",          entidad.Descripcion ?? (object)DBNull.Value },
+                { "@id_cuenta_usuario",    entidad.IdCuentaUsuario },
+                { "@fecha_movimiento",     entidad.FechaMovimiento.ToString("yyyy-MM-dd HH:mm:ss") }
             };
 
             return comando;
@@ -75,8 +89,6 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         }
 
         protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> parametros) {
-            // Los movimientos no se eliminan físicamente.
-            // Este método existe por contrato de la clase base.
             throw new InvalidOperationException(
                 "Los movimientos de caja son inmutables. " +
                 "Para revertir un movimiento incorrecto, registre uno de tipo AjusteArqueo.");
@@ -157,12 +169,13 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 IdMoneda = Convert.ToInt64(lector["id_moneda"]),
                 IdVenta = lector["id_venta"] != DBNull.Value ? Convert.ToInt64(lector["id_venta"]) : null,
                 Monto = Convert.ToDecimal(lector["monto"], CultureInfo.InvariantCulture),
+                MontoMonedaBase = Convert.ToDecimal(lector["monto_moneda_base"], CultureInfo.InvariantCulture),
+                TasaCambioAplicada = Convert.ToDecimal(lector["tasa_cambio_aplicada"], CultureInfo.InvariantCulture),
                 Descripcion = lector["descripcion"] != DBNull.Value ? Convert.ToString(lector["descripcion"]) : null,
                 IdCuentaUsuario = Convert.ToInt64(lector["id_cuenta_usuario"]),
                 FechaMovimiento = Convert.ToDateTime(lector["fecha_movimiento"])
             };
 
-            // Datos auxiliares de JOIN (presentes en consultas de historial)
             if (lector.VisibleFieldCount > 8) {
                 movimiento.NumeroFactura = lector["numero_factura"] != DBNull.Value ? Convert.ToString(lector["numero_factura"]) : null;
                 movimiento.NombreUsuario = lector["nombre_usuario"] != DBNull.Value ? Convert.ToString(lector["nombre_usuario"]) : null;
@@ -179,12 +192,14 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
             ?? new TotalesCierreCaja { IdTurno = idTurno };
 
         /// <summary>
-        /// Igual que ObtenerTotalesPorCanal, pero desglosado por moneda. El monto de apertura
-        /// (siempre en moneda base) solo se suma al efectivo de la moneda base.
+        /// Totales por canal y moneda de un turno. TotalEfectivoBase/TotalTransferenciasBase
+        /// ahora vienen de SUM(monto_moneda_base) — la tasa que quedó CONGELADA al momento
+        /// de cada movimiento — en vez de recalcularse con la tasa de hoy. Así el cierre de
+        /// un turno de hace tiempo no cambia si la tasa se actualizó después.
         /// </summary>
         public List<TotalesCierreCaja> ObtenerTotalesPorCanalYMoneda(long idTurno) {
             var consulta = """
-                SELECT id_moneda, canal_pago, SUM(monto) AS total
+                SELECT id_moneda, canal_pago, SUM(monto) AS total, SUM(monto_moneda_base) AS total_base
                 FROM adv__caja_movimiento
                 WHERE id_turno = @id_turno
                   AND tipo IN ('Venta','DevolucionVenta','EntradaManual','SalidaManual')
@@ -197,7 +212,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 var idMoneda = Convert.ToInt64(lector["id_moneda"]);
                 var canal = Enum.Parse<CanalPagoEnum>(Convert.ToString(lector["canal_pago"]) ?? "NA");
                 var total = Convert.ToDecimal(lector["total"], CultureInfo.InvariantCulture);
-                return (new { idMoneda, canal, total }, new List<IEntidadBaseDatos>());
+                var totalBase = Convert.ToDecimal(lector["total_base"], CultureInfo.InvariantCulture);
+                return (new { idMoneda, canal, total, totalBase }, new List<IEntidadBaseDatos>());
             });
 
             var totalesPorMoneda = new Dictionary<long, TotalesCierreCaja>();
@@ -209,9 +225,18 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 }
 
                 switch (fila.canal) {
-                    case CanalPagoEnum.Efectivo: totales.TotalEfectivo += fila.total; break;
-                    case CanalPagoEnum.TransferenciaBancaria: totales.TotalTransferencias += fila.total; break;
-                    case CanalPagoEnum.Mixto: totales.TotalEfectivo += fila.total; break; // mismo criterio conservador que antes
+                    case CanalPagoEnum.Efectivo:
+                        totales.TotalEfectivo += fila.total;
+                        totales.TotalEfectivoBase += fila.totalBase;
+                        break;
+                    case CanalPagoEnum.TransferenciaBancaria:
+                        totales.TotalTransferencias += fila.total;
+                        totales.TotalTransferenciasBase += fila.totalBase;
+                        break;
+                    case CanalPagoEnum.Mixto:
+                        totales.TotalEfectivo += fila.total;
+                        totales.TotalEfectivoBase += fila.totalBase;
+                        break;
                 }
             }
 
@@ -222,14 +247,41 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
             var montoApertura = ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(
                 "SELECT monto_apertura FROM adv__caja_turno WHERE id_turno = @id_turno LIMIT 1;", parametros);
             totalesPorMoneda[idMonedaBase].TotalEfectivo += montoApertura;
+            totalesPorMoneda[idMonedaBase].TotalEfectivoBase += montoApertura; // apertura ya está en base
 
             return [.. totalesPorMoneda.Values];
         }
 
         /// <summary>
-        /// Devuelve todos los movimientos de un turno ordenados cronológicamente.
-        /// Usado para renderizar el historial en la vista de detalle del turno.
+        /// Totales netos por tipo y moneda en un rango de fechas, incluyendo el equivalente
+        /// ya congelado en moneda base (SUM(monto_moneda_base)) — no se recalcula con la
+        /// tasa de hoy, así el reporte de un período pasado no cambia si la tasa se actualiza.
         /// </summary>
+        public List<TotalMovimientoPorTipo> ObtenerTotalesPorTipoYMonedaEnRango(DateTime fechaDesde, DateTime fechaHasta) {
+            var consulta = """
+                SELECT id_moneda, tipo, SUM(monto) AS total, SUM(monto_moneda_base) AS total_base
+                FROM adv__caja_movimiento
+                WHERE fecha_movimiento >= @fecha_desde
+                  AND fecha_movimiento <= @fecha_hasta
+                GROUP BY id_moneda, tipo;
+                """;
+
+            var parametros = new Dictionary<string, object> {
+                { "@fecha_desde", fechaDesde.ToString("yyyy-MM-dd 00:00:00") },
+                { "@fecha_hasta", fechaHasta.ToString("yyyy-MM-dd 23:59:59") }
+            };
+
+            return ContextoBaseDatos.EjecutarConsulta(consulta, parametros, (lector) => {
+                var item = new TotalMovimientoPorTipo {
+                    IdMoneda = Convert.ToInt64(lector["id_moneda"]),
+                    Tipo = Enum.Parse<TipoMovimientoCajaEnum>(Convert.ToString(lector["tipo"]) ?? "EntradaManual"),
+                    Total = Convert.ToDecimal(lector["total"], CultureInfo.InvariantCulture),
+                    TotalBase = Convert.ToDecimal(lector["total_base"], CultureInfo.InvariantCulture)
+                };
+                return (item, new List<IEntidadBaseDatos>());
+            }).Select(r => r.entidadBase).ToList();
+        }
+
         public List<CajaMovimiento> ObtenerMovimientosTurno(long idTurno) {
             var consulta = """
                 SELECT
@@ -243,8 +295,30 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 ORDER BY m.fecha_movimiento ASC;
                 """;
 
+            var parametros = new Dictionary<string, object> { { "@id_turno", idTurno } };
+
+            return ContextoBaseDatos.EjecutarConsulta(consulta, parametros, MapearEntidad)
+                .Select(r => r.entidadBase)
+                .ToList();
+        }
+
+        public List<CajaMovimiento> ObtenerMovimientosEnRango(DateTime fechaDesde, DateTime fechaHasta) {
+            var consulta = """
+                SELECT
+                    m.*,
+                    v.numero_factura_ticket AS numero_factura,
+                    cu.nombre               AS nombre_usuario
+                FROM adv__caja_movimiento m
+                LEFT JOIN adv__venta          v  ON v.id_venta           = m.id_venta
+                LEFT JOIN adv__cuenta_usuario cu ON cu.id_cuenta_usuario  = m.id_cuenta_usuario
+                WHERE m.fecha_movimiento >= @fecha_desde
+                  AND m.fecha_movimiento <= @fecha_hasta
+                ORDER BY m.fecha_movimiento ASC;
+                """;
+
             var parametros = new Dictionary<string, object> {
-                { "@id_turno", idTurno }
+                { "@fecha_desde", fechaDesde.ToString("yyyy-MM-dd 00:00:00") },
+                { "@fecha_hasta", fechaHasta.ToString("yyyy-MM-dd 23:59:59") }
             };
 
             return ContextoBaseDatos.EjecutarConsulta(consulta, parametros, MapearEntidad)
@@ -252,10 +326,6 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 .ToList();
         }
 
-        /// <summary>
-        /// Verifica si un turno tiene al menos un movimiento registrado.
-        /// Usado por el presentador para decidir si permite anular el turno.
-        /// </summary>
         public bool TurnoTieneMovimientos(long idTurno) {
             var consulta = """
                 SELECT COUNT(*)
@@ -264,9 +334,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 LIMIT 1;
                 """;
 
-            var parametros = new Dictionary<string, object> {
-                { "@id_turno", idTurno }
-            };
+            var parametros = new Dictionary<string, object> { { "@id_turno", idTurno } };
 
             return ContextoBaseDatos.EjecutarConsultaEscalar<int>(consulta, parametros) > 0;
         }

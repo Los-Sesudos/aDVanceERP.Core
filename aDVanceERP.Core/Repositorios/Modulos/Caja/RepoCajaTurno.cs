@@ -364,9 +364,9 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         /// Para turnos multimoneda usar <see cref="ObtenerResumenArqueoPorMoneda"/>.
         /// </summary>
         [Obsolete("Usar ObtenerResumenArqueoPorMoneda para soporte multimoneda.")]
-        public ResumenArqueo ObtenerResumenArqueo(long idTurno) =>
-            ObtenerResumenArqueoPorMoneda(idTurno).FirstOrDefault()
-                ?? new ResumenArqueo { IdTurno = idTurno };
+        public ResumenArqueo ObtenerResumenArqueo(CajaTurno turno) =>
+            ObtenerResumenArqueoPorMoneda(turno).FirstOrDefault()
+                ?? new ResumenArqueo { IdTurno = turno.Id };
 
         /// <summary>
         /// Resumen del arqueo de efectivo de un turno, desglosado por moneda.
@@ -375,7 +375,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         /// (ver <see cref="RepoTasaCambio.ObtenerTasaVigenteEfectivo"/>) más
         /// TotalContadoBase ya convertido.
         /// </summary>
-        public List<ResumenArqueo> ObtenerResumenArqueoPorMoneda(long idTurno) {
+        public List<ResumenArqueo> ObtenerResumenArqueoPorMoneda(CajaTurno turno) {
             var consulta = """
                 SELECT
                     ca.id_arqueo,
@@ -392,7 +392,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 """;
 
             var parametros = new Dictionary<string, object> {
-                { "@id_turno", idTurno }
+                { "@id_turno", turno.Id }
             };
 
             var filas = ContextoBaseDatos.EjecutarConsulta(consulta, parametros, MapearArqueoConMoneda)
@@ -407,10 +407,10 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                     var idMoneda = g.Key;
                     var tasa = idMoneda == idMonedaBase
                         ? 1m
-                        : RepoTasaCambio.Instancia.ObtenerTasaVigenteEfectivo(idMoneda, idMonedaBase);
+                        : RepoTasaCambio.Instancia.ObtenerTasaVigenteEfectivo(idMoneda, idMonedaBase, turno.FechaApertura);
 
                     return new ResumenArqueo {
-                        IdTurno = idTurno,
+                        IdTurno = turno.Id,
                         IdMoneda = idMoneda,
                         CodigoMoneda = g.First().codigoMoneda,
                         Denominaciones = g.Select(x => x.arqueo).ToList(),

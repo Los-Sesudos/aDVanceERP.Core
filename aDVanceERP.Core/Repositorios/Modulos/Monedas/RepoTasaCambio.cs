@@ -124,8 +124,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
         }
 
         /// <summary>
-        /// Obtiene la tasa vigente más reciente (≤ hoy) para el par origen → destino.
-        /// Devuelve 1 si no existe ninguna tasa (monedas iguales o sin datos).
+        /// Igual que <see cref="ObtenerTasaVigente(long,long)"/> pero resuelta a una fecha
+        /// específica en vez de CURDATE(). Es la que hay que usar siempre que se esté
+        /// registrando o recalculando algo que ocurrió en una fecha distinta a hoy
+        /// (ej. el fondo de apertura de un turno, o un backfill histórico) — así el
+        /// monto_moneda_base que se guarda queda congelado con la tasa que realmente
+        /// aplicaba ese día, y no se mueve si la tasa cambia después.
         /// </summary>
         public decimal ObtenerTasaVigente(long idMonedaOrigen, long idMonedaDestino, DateTime fecha) {
             if (idMonedaOrigen == idMonedaDestino)
@@ -136,7 +140,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
                 FROM adv__tasa_cambio
                 WHERE id_moneda_origen  = @origen
                   AND id_moneda_destino = @destino
-                  AND fecha <= DATE(@fecha)
+                  AND fecha <= @fecha
                 ORDER BY fecha DESC
                 LIMIT 1;
                 """;
@@ -144,7 +148,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
             var parametros = new Dictionary<string, object> {
                 { "@origen",  idMonedaOrigen  },
                 { "@destino", idMonedaDestino },
-                { "@fecha", fecha }
+                { "@fecha",   fecha.Date }
             };
 
             var resultado = ContextoBaseDatos.EjecutarConsultaEscalar<object>(consulta, parametros);
@@ -155,12 +159,11 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
         }
 
         /// <summary>
-        /// Igual que <see cref="ObtenerTasaVigente"/>, pero solo considera tasas marcadas
-        /// con aplica_efectivo = 1. Es la que debe usarse para convertir el arqueo físico
-        /// de caja — no la tasa oficial de referencia si esta difiere.
-        /// Devuelve 1 si no existe ninguna tasa de efectivo vigente (monedas iguales o sin datos).
+        /// Igual que <see cref="ObtenerTasaVigenteEfectivo(long,long)"/> pero a una fecha
+        /// específica — la que corresponde usar al registrar un CajaMovimiento o un
+        /// CajaArqueo, para congelar la tasa de efectivo del día del movimiento.
         /// </summary>
-        public decimal ObtenerTasaVigenteEfectivo(long idMonedaOrigen, long idMonedaDestino) {
+        public decimal ObtenerTasaVigenteEfectivo(long idMonedaOrigen, long idMonedaDestino, DateTime fecha) {
             if (idMonedaOrigen == idMonedaDestino)
                 return 1m;
 
@@ -169,7 +172,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
                 FROM adv__tasa_cambio
                 WHERE id_moneda_origen  = @origen
                   AND id_moneda_destino = @destino
-                  AND fecha <= CURDATE()
+                  AND fecha <= @fecha
                   AND aplica_efectivo = 1
                 ORDER BY fecha DESC
                 LIMIT 1;
@@ -177,7 +180,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
 
             var parametros = new Dictionary<string, object> {
                 { "@origen",  idMonedaOrigen  },
-                { "@destino", idMonedaDestino }
+                { "@destino", idMonedaDestino },
+                { "@fecha",   fecha.Date }
             };
 
             var resultado = ContextoBaseDatos.EjecutarConsultaEscalar<object>(consulta, parametros);
@@ -188,16 +192,9 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Monedas {
         }
 
         /// <summary>
-        /// Convierte <paramref name="monto"/> desde <paramref name="idMonedaOrigen"/>
-        /// a <paramref name="idMonedaDestino"/> usando la tasa vigente.
+        /// Convierte un monto a una fecha específica en vez de con la tasa de hoy.
         /// </summary>
-        public decimal Convertir(decimal monto, long idMonedaOrigen, long idMonedaDestino) {
-            if (idMonedaOrigen == idMonedaDestino)
-                return monto;
-
-            var tasa = ObtenerTasaVigente(idMonedaOrigen, idMonedaDestino);
-
-            return Math.Round(monto * tasa, 4, MidpointRounding.AwayFromZero);
-        }
+        public decimal Convertir(decimal monto, long idMonedaOrigen, long idMonedaDestino, DateTime fecha) =>
+            monto * ObtenerTasaVigente(idMonedaOrigen, idMonedaDestino, fecha);
     }
 }

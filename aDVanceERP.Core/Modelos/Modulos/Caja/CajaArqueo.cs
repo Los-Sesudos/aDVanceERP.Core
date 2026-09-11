@@ -8,31 +8,8 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
     /// STORED en BD — se asigna al leer, nunca al escribir.
     /// </summary>
     public sealed class CajaArqueo : IEntidadBaseDatos {
-        public CajaArqueo() { }
-
-        /// <summary>Constructor de compatibilidad: asume moneda base (id_moneda = 1).</summary>
-        public CajaArqueo(long id, long idTurno, decimal denominacion, int cantidad)
-            : this(id, idTurno, denominacion, cantidad, idMoneda: 1) { }
-
-        public CajaArqueo(long id, long idTurno, decimal denominacion, int cantidad, long idMoneda) {
-            Id = id;
-            IdTurno = idTurno;
-            Denominacion = denominacion;
-            Cantidad = cantidad;
-            IdMoneda = idMoneda;
-            Subtotal = denominacion * cantidad;
-        }
-
-        public CajaArqueo(long id, long idTurno, decimal denominacion, int cantidad, long idMoneda, decimal subtotal) {
-            Id = id;
-            IdTurno = idTurno;
-            Denominacion = denominacion;
-            Cantidad = cantidad;
-            IdMoneda = idMoneda;
-            Subtotal = subtotal;
-        }
-
         public long Id { get; set; }
+
         public long IdTurno { get; set; }
 
         /// <summary>Valor de billete o moneda. Ej: 500, 200, 100, 50, 20, 10, 5, 1, 0.50</summary>
@@ -41,11 +18,13 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
         /// <summary>Cantidad de piezas contadas.</summary>
         public int Cantidad { get; set; }
 
+        /// <summary>Columna STORED en BD (Denominacion × Cantidad). Solo lectura desde la app.</summary>
+        public decimal Subtotal { get; set; }
+
         /// <summary>id_moneda del catálogo adv__moneda. Default 1 = moneda base (CUP).</summary>
         public long IdMoneda { get; set; } = 1;
 
-        /// <summary>Columna STORED en BD (Denominacion × Cantidad). Solo lectura desde la app.</summary>
-        public decimal Subtotal { get; set; }
+        public decimal TasaCambioAplicada { get; set; } = 1m;
     }
 
     /// <summary>
@@ -82,5 +61,33 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
         public long IdMoneda { get; set; }
         public decimal TotalEfectivo { get; set; }
         public decimal TotalTransferencias { get; set; }
+
+        /// <summary>
+        /// TotalEfectivo ya convertido a moneda base (tasa congelada por movimiento).
+        /// </summary>
+        public decimal TotalEfectivoBase { get; set; }
+
+        /// <summary>
+        /// TotalTransferencias ya convertido a moneda base (tasa congelada por movimiento).
+        /// </summary>
+        public decimal TotalTransferenciasBase { get; set; }
     }
+
+
+    /// <summary>
+    /// DTO de solo lectura: total neto de un tipo de movimiento en una moneda, dentro de un rango.
+    /// Lo produce <see cref="RepoCajaMovimiento.ObtenerTotalesPorTipoYMonedaEnRango"/>.
+    /// Base para el saldo teórico de DocBalanceCajaPeriodo.
+    /// </summary>
+    public sealed class TotalMovimientoPorTipo {
+        public long IdMoneda { get; set; }
+        public TipoMovimientoCajaEnum Tipo { get; set; }
+        public decimal Total { get; set; }
+
+        /// <summary>
+        /// Total ya convertido a moneda base (tasa congelada por movimiento).
+        /// </summary>
+        public decimal TotalBase { get; set; }
+    }
+
 }

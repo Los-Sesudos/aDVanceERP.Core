@@ -1,13 +1,11 @@
 ﻿using aDVanceERP.Core.Modelos.Comun.Interfaces;
 using aDVanceERP.Core.Modelos.Modulos.Comun;
-using aDVanceERP.Core.Modelos.Modulos.Monedas;
 
 using System.ComponentModel.DataAnnotations;
 
 namespace aDVanceERP.Core.Modelos.Modulos.Caja {
 
     public sealed class CajaMovimiento : IEntidadBaseDatos {
-
         public CajaMovimiento() {
             Tipo = TipoMovimientoCajaEnum.EntradaManual;
             CanalPago = CanalPagoEnum.NA;
@@ -15,36 +13,18 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
             FechaMovimiento = DateTime.Now;
         }
 
-        public CajaMovimiento(
-            long id,
-            long idTurno,
-            TipoMovimientoCajaEnum tipo,
-            CanalPagoEnum canalPago,
-            long idMoneda,
-            long? idVenta,
-            decimal monto,
-            string? descripcion,
-            long idCuentaUsuario,
-            DateTime fechaMovimiento) {
-
-            Id = id;
-            IdTurno = idTurno;
-            Tipo = tipo;
-            CanalPago = canalPago;
-            IdMoneda = idMoneda;
-            IdVenta = idVenta;
-            Monto = monto;
-            Descripcion = descripcion;
-            IdCuentaUsuario = idCuentaUsuario;
-            FechaMovimiento = fechaMovimiento;
-        }
-
         public long Id { get; set; }
+
         public long IdTurno { get; set; }
+
         public long IdMoneda { get; set; } = 1;
+
         public long? IdVenta { get; set; }
+
         public long IdCuentaUsuario { get; set; }
+
         public TipoMovimientoCajaEnum Tipo { get; set; }
+
         public CanalPagoEnum CanalPago { get; set; }
 
         /// <summary>
@@ -53,9 +33,24 @@ namespace aDVanceERP.Core.Modelos.Modulos.Caja {
         public decimal Monto { get; set; }
 
         public string? Descripcion { get; set; }
+
         public DateTime FechaMovimiento { get; set; }
+
         public string? NumeroFactura { get; set; }
+
         public string? NombreUsuario { get; set; }
+
+        /// <summary>
+        /// Monto ya convertido a moneda base, congelado con la tasa vigente
+        /// al momento del movimiento (0 si nunca se recalculó — filas antiguas).
+        /// </summary>
+        public decimal MontoMonedaBase { get; set; }
+
+        /// <summary>
+        /// Tasa aplicada al convertir Monto → MontoMonedaBase. 1 si es la moneda base.
+        /// </summary>
+        public decimal TasaCambioAplicada { get; set; } = 1m;
+
     }
 
 

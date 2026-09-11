@@ -25,15 +25,28 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
             // el UNIQUE KEY (id_turno, denominacion) sin lanzar error
             // si el cajero corrige una denominación ya ingresada.
             var comando = """
-                INSERT INTO adv__caja_arqueo (id_turno, denominacion, cantidad)
-                VALUES (@id_turno, @denominacion, @cantidad)
+                INSERT INTO adv__caja_arqueo (
+                    id_turno, 
+                    denominacion, 
+                    cantidad,
+                    id_moneda,
+                    tasa_cambio_aplicada
+                ) VALUES (
+                    @id_turno, 
+                    @denominacion,
+                    @cantidad,
+                    @id_moneda, 
+                    @tasa_cambio_aplicada, 
+                )
                 ON DUPLICATE KEY UPDATE cantidad = VALUES(cantidad);
                 """;
 
             parametros = new Dictionary<string, object> {
-                { "@id_turno",     entidad.IdTurno },
+                { "@id_turno", entidad.IdTurno },
                 { "@denominacion", entidad.Denominacion },
-                { "@cantidad",     entidad.Cantidad }
+                { "@cantidad", entidad.Cantidad },
+                { "@id_moneda", entidad.IdMoneda },
+                { "@tasa_cambio_aplicada", entidad.TasaCambioAplicada }
             };
 
             return comando;
@@ -46,7 +59,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
 
             var comando = """
                 UPDATE adv__caja_arqueo
-                SET cantidad = @cantidad
+                SET 
+                    cantidad = @cantidad
                 WHERE id_arqueo = @id_arqueo;
                 """;
 
@@ -99,7 +113,9 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 IdTurno = Convert.ToInt64(lector["id_turno"]),
                 Denominacion = Convert.ToDecimal(lector["denominacion"], CultureInfo.InvariantCulture),
                 Cantidad = Convert.ToInt32(lector["cantidad"]),
-                Subtotal = lector["subtotal"] != DBNull.Value ? Convert.ToDecimal(lector["subtotal"]) : 0m
+                Subtotal = lector["subtotal"] != DBNull.Value ? Convert.ToDecimal(lector["subtotal"]) : 0m,
+                IdMoneda = Convert.ToInt64(lector["id_moneda"]),
+                TasaCambioAplicada = Convert.ToDecimal("tasa_cambio_aplicada")
             };
 
             return (arqueo, new List<IEntidadBaseDatos>());
@@ -120,8 +136,19 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 """;
 
             var consultaInsertar = """
-                INSERT INTO adv__caja_arqueo (id_turno, denominacion, cantidad, id_moneda)
-                VALUES (@id_turno, @denominacion, @cantidad, @id_moneda, @tasa_cambio);
+                INSERT INTO adv__caja_arqueo (
+                    id_turno, 
+                    denominacion, 
+                    cantidad,
+                    id_moneda,
+                    tasa_cambio_aplicada
+                ) VALUES (
+                    @id_turno, 
+                    @denominacion,
+                    @cantidad,
+                    @id_moneda, 
+                    @tasa_cambio_aplicada, 
+                );
                 """;
 
             using var conexion = ContextoBaseDatos.ObtenerConexionOptimizada();
@@ -137,8 +164,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 // 1. Limpiar arqueo anterior del turno
                 ContextoBaseDatos.EjecutarComandoNoQuery(
                     consultaEliminar,
-                    new Dictionary<string, object> { 
-                        { "@id_turno", idTurno } 
+                    new Dictionary<string, object> {
+                        { "@id_turno", idTurno }
                     },
                     conexion);
 
@@ -151,7 +178,7 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                             { "@denominacion", den.Denominacion },
                             { "@cantidad",     den.Cantidad },
                             { "@id_moneda" ,   den.IdMoneda},
-                            { "@tasa_cambio",  repoTasaCambio.ObtenerTasaVigente(den.IdMoneda, idMonedaBase, turno.FechaApertura)}
+                            { "@tasa_cambio_aplicada",  repoTasaCambio.ObtenerTasaVigente(den.IdMoneda, idMonedaBase, turno.FechaApertura)}
                         },
                         conexion);
                 }
@@ -186,4 +213,4 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
                 .ToList();
         }
     }
-}   
+}
