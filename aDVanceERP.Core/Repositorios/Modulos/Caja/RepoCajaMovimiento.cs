@@ -76,13 +76,37 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         protected override string GenerarComandoEditar(CajaMovimiento entidad, out Dictionary<string, object> parametros, params IEntidadBaseDatos[] entidadesExtra) {
             var comando = """
                 UPDATE adv__caja_movimiento
-                SET descripcion = @descripcion
+                SET 
+                    tipo = @tipo,
+                    canal_pago = @canal_pago,
+                    monto = @monto,
+                    id_moneda = @id_moneda,
+                    descripcion = @descripcion
                 WHERE id_movimiento_caja = @id_movimiento_caja;
                 """;
 
+            // Se congela la tasa del día del movimiento — no la de hoy — para que un
+            // reporte histórico no cambie de valor si la tasa se actualiza después.
+            var idMonedaBase = RepoMoneda.Instancia.ObtenerMonedaBase().Id;
+            decimal tasaAplicada = entidad.IdMoneda == idMonedaBase
+                ? 1m
+                : RepoTasaCambio.Instancia
+                    .ObtenerTasaVigenteEfectivo(
+                        entidad.IdMoneda, 
+                        idMonedaBase, 
+                        entidad.FechaMovimiento
+                    );
+            decimal montoBase = entidad.Monto * tasaAplicada;
+
             parametros = new Dictionary<string, object> {
-                { "@id_movimiento_caja", entidad.Id },
-                { "@descripcion",        entidad.Descripcion ?? (object)DBNull.Value }
+                { "@id_movimiento_caja",   entidad.Id },
+                { "@tipo",                 entidad.Tipo.ToString() },
+                { "@monto",                entidad.Monto },
+                { "@canal_pago",           entidad.CanalPago.ToString() },
+                { "@id_moneda",            entidad.IdMoneda },
+                { "@monto_moneda_base",    montoBase },
+                { "@tasa_cambio_aplicada", tasaAplicada },
+                { "@descripcion",          entidad.Descripcion ?? (object)DBNull.Value }
             };
 
             return comando;

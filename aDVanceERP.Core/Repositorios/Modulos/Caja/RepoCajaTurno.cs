@@ -89,12 +89,18 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         }
 
         protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> parametros) {
-            // Los turnos no se eliminan físicamente — usar AnularTurno().
-            // Este método existe por contrato de la clase base.
             var comando = """
-                UPDATE adv__caja_turno
-                SET estado = 'Anulado'
-                WHERE id_turno = @id_turno
+                DELETE FROM adv__caja_arqueo 
+                WHERE id_turno = @id_turno;
+
+                DELETE FROM adv__caja_conciliacion_moneda 
+                WHERE id_turno = @id_turno;
+
+                DELETE FROM adv__caja_movimiento 
+                WHERE id_turno = @id_turno;
+
+                DELETE FROM adv__caja_turno 
+                WHERE id_turno = @id_turno;
                 """;
 
             parametros = new Dictionary<string, object> {

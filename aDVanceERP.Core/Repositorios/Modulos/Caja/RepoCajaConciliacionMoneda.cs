@@ -38,7 +38,11 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
             using var transaccion = conexion.BeginTransaction();
 
             try {
-                using (var borrar = new MySqlCommand("DELETE FROM adv__caja_conciliacion_moneda WHERE id_turno = @id_turno;", conexion, transaccion)) {
+                using (var borrar = new MySqlCommand("""
+                    DELETE FROM adv__caja_conciliacion_moneda 
+                    WHERE id_turno = @id_turno;
+                    """, conexion, transaccion)) {
+                    
                     borrar.Parameters.AddWithValue("@id_turno", idTurno);
                     borrar.ExecuteNonQuery();
                 }
