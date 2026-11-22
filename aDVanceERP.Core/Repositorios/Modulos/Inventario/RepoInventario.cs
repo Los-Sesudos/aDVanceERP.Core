@@ -144,6 +144,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
         /// Si no (venta, traslado), usar costo del catálogo de producto.
         /// </summary>
         public void ModificarInventario(Producto? producto, Almacen? almacenOrigen, Almacen? almacenDestino, decimal cantidadMovida) {
+            // El combo de movimientos usa un almacen "Ninguno" con Id 0 como marcador de "sin almacen".
+            // Un almacen sin Id valido equivale a null: nunca debe generar filas en adv__inventario.
+            if (almacenOrigen != null && almacenOrigen.Id <= 0) almacenOrigen = null;
+            if (almacenDestino != null && almacenDestino.Id <= 0) almacenDestino = null;
+            if (almacenOrigen == null && almacenDestino == null) return;
+
             var costoUnitario = producto!.Categoria == CategoriaProductoEnum.ProductoTerminado
                 ? producto.CostoProduccionUnitario
                 : producto.CostoAdquisicionUnitario;
@@ -171,6 +177,8 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
 
             // Aumentar la cantidad en el almacen destino
             if (almacenDestino != null) {
+                // OJO: en un UPDATE de MySQL/MariaDB las asignaciones se evaluan de izquierda a derecha y las
+                // siguientes ven el valor ya actualizado. Por eso 'cantidad' se asigna al FINAL (C-01).
                 // Verificar primeramente si el producto existe en el almacén de destino
                 consulta = """
                     SELECT COUNT(*)
@@ -188,9 +196,9 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Inventario {
                     consulta = """
                         UPDATE adv__inventario
                         SET 
-                            cantidad = cantidad + @Cantidad,
-                            costo_promedio = (valor_total + (@Cantidad * @CostoUnitario)) / (cantidad + @Cantidad),
-                            valor_total = valor_total + (@Cantidad * @CostoUnitario)
+                            costo_promedio = IF(cantidad + @Cantidad = 0, costo_promedio, (valor_total + (@Cantidad * @CostoUnitario)) / (cantidad + @Cantidad)),
+                            valor_total = valor_total + (@Cantidad * @CostoUnitario),
+                            cantidad = cantidad + @Cantidad
                         WHERE id_producto = @IdProducto AND id_almacen = @IdAlmacenDestino
                         """;
 

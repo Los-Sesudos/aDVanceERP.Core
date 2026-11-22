@@ -19,7 +19,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                     cantidad,
                     costo_unitario,
                     descuento_item,
-                    impuesto_adicional_item
+                    impuesto_adicional_item,
+                    id_moneda,
+                    tasa_cambio_aplicada,
+                    costo_unitario_base,
+                    factor_presentacion,
+                    cantidad_base
                 ) VALUES (
                     @id_compra,
                     @id_producto,
@@ -27,7 +32,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                     @cantidad,
                     @costo_unitario,
                     @descuento_item,
-                    @impuesto_adicional_item
+                    @impuesto_adicional_item,
+                    @id_moneda,
+                    @tasa_cambio_aplicada,
+                    @costo_unitario_base,
+                    @factor_presentacion,
+                    @cantidad_base
                 )
                 """;
 
@@ -38,7 +48,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                 { "@cantidad", entidad.Cantidad },
                 { "@costo_unitario", entidad.CostoUnitario },
                 { "@descuento_item", entidad.DescuentoItem },
-                { "@impuesto_adicional_item", entidad.ImpuestoAdicionalItem }
+                { "@impuesto_adicional_item", entidad.ImpuestoAdicionalItem },
+                { "@id_moneda", entidad.IdMoneda.HasValue ? entidad.IdMoneda.Value : DBNull.Value },
+                { "@tasa_cambio_aplicada", entidad.TasaCambioAplicada },
+                { "@costo_unitario_base", entidad.CostoUnitarioBase },
+                { "@factor_presentacion", entidad.FactorPresentacion },
+                { "@cantidad_base", entidad.CantidadBase }
             };
 
             return consulta;
@@ -54,7 +69,12 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                     cantidad = @cantidad,
                     costo_unitario = @costo_unitario,
                     descuento_item = @descuento_item,
-                    impuesto_adicional_item = @impuesto_adicional_item
+                    impuesto_adicional_item = @impuesto_adicional_item,
+                    id_moneda = @id_moneda,
+                    tasa_cambio_aplicada = @tasa_cambio_aplicada,
+                    costo_unitario_base = @costo_unitario_base,
+                    factor_presentacion = @factor_presentacion,
+                    cantidad_base = @cantidad_base
                 WHERE id_detalle_compra_producto = @id_detalle
                 """;
 
@@ -66,6 +86,11 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                 { "@costo_unitario", entidad.CostoUnitario },
                 { "@descuento_item", entidad.DescuentoItem },
                 { "@impuesto_adicional_item", entidad.ImpuestoAdicionalItem },
+                { "@id_moneda", entidad.IdMoneda.HasValue ? entidad.IdMoneda.Value : DBNull.Value },
+                { "@tasa_cambio_aplicada", entidad.TasaCambioAplicada },
+                { "@costo_unitario_base", entidad.CostoUnitarioBase },
+                { "@factor_presentacion", entidad.FactorPresentacion },
+                { "@cantidad_base", entidad.CantidadBase },
                 { "@id_detalle", entidad.Id }
             };
 
@@ -138,7 +163,11 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                 CostoUnitario = Convert.ToDecimal(lector["costo_unitario"]),
                 DescuentoItem = Convert.ToDecimal(lector["descuento_item"]),
                 ImpuestoAdicionalItem = Convert.ToDecimal(lector["impuesto_adicional_item"]),
-                IdPresentacion = lector["id_presentacion"] != DBNull.Value ? Convert.ToInt64(lector["id_presentacion"]) : null
+                IdPresentacion = lector["id_presentacion"] != DBNull.Value ? Convert.ToInt64(lector["id_presentacion"]) : null,
+                IdMoneda = lector["id_moneda"] != DBNull.Value ? Convert.ToInt64(lector["id_moneda"]) : null,
+                TasaCambioAplicada = Convert.ToDecimal(lector["tasa_cambio_aplicada"]),
+                CostoUnitarioBase = Convert.ToDecimal(lector["costo_unitario_base"]),
+                FactorPresentacion = Convert.ToDecimal(lector["factor_presentacion"])
             };
 
             var entidadesExtra = new List<IEntidadBaseDatos>();

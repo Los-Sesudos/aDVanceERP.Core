@@ -113,9 +113,15 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Caja {
         }
 
         protected override string GenerarComandoEliminar(long id, out Dictionary<string, object> parametros) {
-            throw new InvalidOperationException(
-                "Los movimientos de caja son inmutables. " +
-                "Para revertir un movimiento incorrecto, registre uno de tipo AjusteArqueo.");
+            var comando = """
+                DELETE FROM adv__caja_movimiento
+                WHERE id_movimiento_caja = @id_movimiento_caja;
+                """;
+            parametros = new Dictionary<string, object> {
+                { "@id_movimiento_caja", id }
+            };
+
+            return comando;
         }
 
         protected override string GenerarComandoObtener(FiltroBusquedaCajaMovimiento filtroBusqueda, out Dictionary<string, object> parametros, params string[] criteriosBusqueda) {
