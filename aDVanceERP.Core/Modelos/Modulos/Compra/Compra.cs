@@ -33,6 +33,19 @@ namespace aDVanceERP.Core.Modelos.Modulos.Compra {
         public int IdMoneda { get; set; }
         public decimal TasaCambioAplicada { get; set; }
 
+        // Ejes del ciclo de la compra (adv__compra.estado_recepcion / estado_pago). El eje de pago lo gobernará el módulo Pago.
+        public EstadoRecepcionCompraEnum EstadoRecepcion { get; set; } = EstadoRecepcionCompraEnum.SinRecibir;
+        public EstadoPagoCompraEnum EstadoPago { get; set; } = EstadoPagoCompraEnum.SinPago;
+
+        // Solo lectura: se calculan en la consulta de búsqueda (no se persisten).
+        public string NombreProveedor { get; set; } = string.Empty;
+        /// <summary>Código de la moneda en que se pactaron las líneas; "MIXTA" si hay varias; vacío si no hay líneas.</summary>
+        public string MonedaCodigo { get; set; } = string.Empty;
+        /// <summary>Importe en la moneda de las líneas. Nulo cuando la moneda es mixta.</summary>
+        public decimal? ImporteEnMoneda { get; set; }
+        /// <summary>Fracción recibida de lo comprado, de 0 a 100 (por cantidad de líneas en su presentación).</summary>
+        public decimal PorcentajeRecibido { get; set; }
+
         public override string ToString() {
             return Codigo ?? string.Empty;
         }

@@ -143,7 +143,20 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
             var consultaComun = $"""
                 SELECT c.*, 
                        prov.razon_social as nombre_proveedor,
-                       al.nombre as nombre_almacen
+                       al.nombre as nombre_almacen,
+                       (SELECT CASE WHEN COUNT(*) = 0 THEN NULL
+                                    WHEN COUNT(DISTINCT COALESCE(d.id_moneda, c.id_moneda)) = 1 THEN MAX(m.codigo)
+                                    ELSE 'MIXTA' END
+                        FROM adv__detalle_compra_producto d
+                        LEFT JOIN adv__moneda m ON m.id_moneda = COALESCE(d.id_moneda, c.id_moneda)
+                        WHERE d.id_compra = c.id_compra) AS moneda_codigo,
+                       (SELECT CASE WHEN COUNT(DISTINCT COALESCE(d.id_moneda, c.id_moneda)) = 1
+                                    THEN SUM(d.cantidad * d.costo_unitario) END
+                        FROM adv__detalle_compra_producto d
+                        WHERE d.id_compra = c.id_compra) AS importe_moneda,
+                       (SELECT COALESCE(SUM(LEAST(d.cantidad_recibida, d.cantidad)) * 100 / NULLIF(SUM(d.cantidad), 0), 0)
+                        FROM adv__detalle_compra_producto d
+                        WHERE d.id_compra = c.id_compra) AS porcentaje_recibido
                 FROM adv__compra c
                 LEFT JOIN adv__proveedor prov ON c.id_proveedor = prov.id_proveedor
                 LEFT JOIN adv__almacen al ON c.id_almacen_destino = al.id_almacen
@@ -220,9 +233,38 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
                 TasaCambioAplicada = lector["tasa_cambio_aplicada"] != DBNull.Value ? Convert.ToDecimal(lector["tasa_cambio_aplicada"], CultureInfo.InvariantCulture) : 1.0m
             };
 
+            // Columnas de V001 y de la consulta de búsqueda: se leen solo si vienen en el resultado (otras consultas usan este mapeo).
+            if (TieneColumna(lector, "estado_recepcion") && lector["estado_recepcion"] != DBNull.Value
+                && Enum.TryParse<EstadoRecepcionCompraEnum>(Convert.ToString(lector["estado_recepcion"]), out var estadoRecepcion))
+                compra.EstadoRecepcion = estadoRecepcion;
+
+            if (TieneColumna(lector, "estado_pago") && lector["estado_pago"] != DBNull.Value
+                && Enum.TryParse<EstadoPagoCompraEnum>(Convert.ToString(lector["estado_pago"]), out var estadoPago))
+                compra.EstadoPago = estadoPago;
+
+            if (TieneColumna(lector, "nombre_proveedor") && lector["nombre_proveedor"] != DBNull.Value)
+                compra.NombreProveedor = Convert.ToString(lector["nombre_proveedor"]) ?? string.Empty;
+
+            if (TieneColumna(lector, "moneda_codigo") && lector["moneda_codigo"] != DBNull.Value)
+                compra.MonedaCodigo = Convert.ToString(lector["moneda_codigo"]) ?? string.Empty;
+
+            if (TieneColumna(lector, "importe_moneda") && lector["importe_moneda"] != DBNull.Value)
+                compra.ImporteEnMoneda = Convert.ToDecimal(lector["importe_moneda"], CultureInfo.InvariantCulture);
+
+            if (TieneColumna(lector, "porcentaje_recibido") && lector["porcentaje_recibido"] != DBNull.Value)
+                compra.PorcentajeRecibido = Convert.ToDecimal(lector["porcentaje_recibido"], CultureInfo.InvariantCulture);
+
             var entidadesExtra = new List<IEntidadBaseDatos>();
 
             return (compra, entidadesExtra);
+        }
+
+        private static bool TieneColumna(MySqlDataReader lector, string nombre) {
+            for (var i = 0; i < lector.FieldCount; i++)
+                if (string.Equals(lector.GetName(i), nombre, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+            return false;
         }
 
         #region SINGLETON
@@ -279,6 +321,53 @@ namespace aDVanceERP.Core.Repositorios.Modulos.Compra {
             };
 
             return ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(consulta, parametros);
+        }
+
+        /// <summary>
+        /// Totales de la cabecera de Gestión de compras para el período, en moneda base y sin contar compras anuladas.
+        /// </summary>
+        public ResumenComprasPeriodo ObtenerResumenPorPeriodo(DateTime fechaInicio, DateTime fechaFin) {
+            var parametros = new Dictionary<string, object> {
+                { "@fecha_inicio", fechaInicio.ToString("yyyy-MM-dd 00:00:00") },
+                { "@fecha_fin", fechaFin.ToString("yyyy-MM-dd 23:59:59") }
+            };
+
+            const string consultaCantidad = """
+                SELECT COUNT(*) FROM adv__compra
+                WHERE fecha >= @fecha_inicio AND fecha <= @fecha_fin AND activo = 1;
+                """;
+
+            const string consultaInvertido = """
+                SELECT COALESCE(SUM(importe_total), 0) FROM adv__compra
+                WHERE fecha >= @fecha_inicio AND fecha <= @fecha_fin
+                  AND activo = 1 AND estado_compra <> 'Anulada';
+                """;
+
+            const string consultaPorRecibir = """
+                SELECT COALESCE(SUM(GREATEST(d.cantidad - d.cantidad_recibida, 0) * d.costo_unitario_base), 0)
+                FROM adv__detalle_compra_producto d
+                INNER JOIN adv__compra c ON c.id_compra = d.id_compra
+                WHERE c.fecha >= @fecha_inicio AND c.fecha <= @fecha_fin
+                  AND c.activo = 1 AND c.estado_compra <> 'Anulada';
+                """;
+
+            const string consultaPorPagar = """
+                SELECT COALESCE(SUM(GREATEST(c.importe_total - COALESCE(p.pagado, 0), 0)), 0)
+                FROM adv__compra c
+                LEFT JOIN (SELECT id_compra, SUM(monto_pagado) AS pagado
+                           FROM adv__pago
+                           WHERE estado_pago = 'Confirmado' AND id_compra IS NOT NULL
+                           GROUP BY id_compra) p ON p.id_compra = c.id_compra
+                WHERE c.fecha >= @fecha_inicio AND c.fecha <= @fecha_fin
+                  AND c.activo = 1 AND c.estado_compra <> 'Anulada';
+                """;
+
+            return new ResumenComprasPeriodo {
+                Cantidad = (int) ContextoBaseDatos.EjecutarConsultaEscalar<long>(consultaCantidad, parametros),
+                TotalInvertido = ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(consultaInvertido, parametros),
+                PorRecibir = ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(consultaPorRecibir, parametros),
+                PorPagar = ContextoBaseDatos.EjecutarConsultaEscalar<decimal>(consultaPorPagar, parametros)
+            };
         }
 
         /// <summary>
